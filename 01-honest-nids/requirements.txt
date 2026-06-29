@@ -1,0 +1,12 @@
+# MVP 档依赖——保持精简，不在此阶段引入重型脚手架
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+lightgbm>=4.0
+shap>=0.44
+matplotlib>=3.7
+pyarrow>=14.0      # 读 NetFlow-v2 parquet/csv
+jupyterlab>=4.0
+marimo>=0.23     # 反应式 notebook（替代/补充 jupyter）
+duckdb>=1.5
+pytest>=8.0

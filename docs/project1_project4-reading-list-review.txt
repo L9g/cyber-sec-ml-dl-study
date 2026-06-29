@@ -1,0 +1,247 @@
+•project1-reading-list.md: 审阅结论。
+
+  改进建议如下。
+
+  最重要的调整
+
+  1. 把阅读清单拆成“必读 5 篇 + 实验支撑 + 扩展”
+     现在 ⭐ 稍多，容易读着读着失焦。建议真正必读只保留：
+      - Sommer & Paxson 2010：为什么 NIDS ML 难。
+      - Arp et al. 2022：安全 ML 方法论陷阱。
+      - TESSERACT 2019：temporal / spatial bias。
+      - Engelen + Lanvin：CICIDS2017 数据质量。
+      - Sarhan NetFlow + Cross-dataset generalization：项目实验主线。
+
+  2. 补一个“论文 → 项目产物”的映射表
+     每篇论文后面现在有“对项目一”的说明，但建议集中成表格，例如：
+      - Arp → evaluation_checklist.md
+      - TESSERACT → temporal split + drift curve
+      - Engelen/Lanvin → dataset version decision
+      - Sarhan → unified NetFlow feature set
+      - Cross-dataset generalization → LODO experiment
+      - Sommer/Paxson → README 背景和 base-rate fallacy
+
+     这样阅读不会停在“知道论文”，而是直接变成 repo 里的 deliverables。
+
+  3. TESSERACT 要注明“来自 malware，不是 NIDS 专用”。
+     TESSERACT 的 temporal/spatial bias 和 AUT 很适合借鉴，但原论文是 Android malware classification，不是网络流量入
+     侵检测。建议写清楚：
+     “本项目借用其评估思想，不直接照搬实验设置。”
+     否则面试时容易被追问：为什么 malware 的 AUT 可以直接用在 NIDS？
+
+  4. 项目一还缺“真实 base rate / alert volume”方向的论文或材料。
+     你已经提到 base-rate fallacy，但清单里缺能指导实验呈现的材料。建议在项目中增加一个评估输出：
+     每 100 万条 flow，在 0.1%、1%、5% 攻击占比下会产生多少 false positives / analyst workload。
+     这会比单纯 PR-AUC 更贴近 SOC 现实。
+
+  5. 补“数据集综述 / 数据集缺陷”类论文。
+     现在数据集质量主要围绕 CICIDS2017，但项目一还会用 UNSW-NB15、ToN-IoT、CSE-CIC-IDS2018、NF 系列。建议补一组“背景
+     型”论文：
+      - Ring et al., A Survey of Network-based Intrusion Detection Data Sets, Computers & Security 2019。
+        用来解释为什么数据集选择本身是 NIDS 研究的核心风险。
+
+      - Tavallaee et al., A Detailed Analysis of the KDD CUP 99 Data Set, 2009。
+        不一定用于实验，但适合说明为什么老数据集会导致虚高。
+
+      - Moustafa & Slay, UNSW-NB15: a comprehensive data set for network intrusion detection systems, 2015/2016。
+        如果项目用 UNSW-NB15，应读原始数据集论文。
+
+  6. 补“特征泄漏 / 捷径学习”的实验指导。
+     你的 Arp 精读笔记里已经有 spurious correlations，但建议在阅读清单中新增一个小节：
+     “Feature leakage and shortcut learning”。
+     不一定只找 NIDS 论文，也可以引用安全 ML 中关于 shortcut / spurious correlation 的方法论。项目产物可以是
+     feature_policy_matrix.csv：
+      - inference-safe
+      - environment-specific
+      - suspected shortcut
+      - direct leakage
+      - privacy-sensitive
+
+  7. Cross-dataset 部分建议补 LycoS / 修正版 CIC 相关材料。
+     你列的 On the Cross-Dataset Generalization of ML for NIDS 很关键。该论文指出同数据集内接近完美，但跨数据集时常
+     接近随机，并涉及 LycoS 修正数据集。建议把它从“第 4 节第三篇”提升为必读，因为它和你的 LODO 实验直接对应。
+     参考：arXiv 2402.10974。
+
+  8. ET-BERT 放得合理，但需要降温说明。
+     ET-BERT 是加密流量表示学习，不是“诚实评估 NIDS”的核心。建议保留在扩展区，并明确：
+      - 它适合作为 DL 表示学习方向。
+      - 不解决项目一的核心问题：dataset leakage、temporal bias、cross-dataset collapse。
+      - 不建议在 MVP 阶段实现。
+
+  建议补充的小节
+
+  可以在第 6 节前加一个新节：
+
+  ## 5. 实验设计与部署可用性（建议补充）
+
+  ### ⭐ A Survey of Network-based Intrusion Detection Data Sets
+  - 用途：解释为什么 NIDS 数据集本身会决定结论可信度。
+
+  ### ⭐ UNSW-NB15 原始数据集论文
+  - 用途：如果使用 NF-UNSW-NB15，需要理解原始攻击类别、采集环境和标签定义。
+
+  ### ○ KDD99 / NSL-KDD 数据集批判
+  - 用途：README 中说明为什么不使用 KDD99/NSL-KDD 作为主实验。
+
+  需要修正或核对的细节
+
+  - project1-reading-list.md:69 链接写的是 2024 扩展版 arXiv，但 BibTeX 是 USENIX 2019。建议同时放 original USENIX
+    2019 / arXiv 1807.07838 和 2024 extended version，避免引用混乱。
+
+  - project1-reading-list.md:92 标题写 2022/2023，BibTeX booktitle={CRiSIS}, year={2022}，但 Springer 链接可能是
+    2023 proceedings。建议落地前统一年份和 venue。
+
+  - project1-reading-list.md:115 建议不要只放 ResearchGate，补 arXiv 或期刊页面。
+  - project1-reading-list.md:154 “F1 可达 98.9%”建议注明任务类型，避免读者误以为它解决了 NIDS 泛化问题。
+
+  我建议的最终阅读顺序
+
+  1. Sommer & Paxson
+  2. Arp et al.
+  3. TESSERACT
+  4. Ring dataset survey
+  5. Engelen + Lanvin
+  6. Sarhan NetFlow feature set
+  7. Cross-dataset generalization 2024
+  8. SoK pragmatic assessment
+  9. Adversarial NIDS papers
+  10. ET-BERT
+
+  整体上，这份 reading list 已经够支撑项目一。下一步不是再无限加论文，而是把每篇论文绑定到一个实验产物：split
+  strategy、feature policy、dataset decision、metric table、LODO matrix、base-rate alert-volume analysis。这样它会更
+  像项目实施手册，而不是单纯文献清单。
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• project4-reading-list.md审阅结论。
+
+  我建议主要从 5 个方向补强。
+
+  1. 增加“合规 / 业务流程”阅读线
+
+  现在列表偏算法和数据集，但 AML 岗位面试经常不是只问 GNN，而是问：模型怎么进入 transaction monitoring workflow，怎
+  么减少 false positives，怎么支持 investigator，怎么审计。
+
+  建议新增一节：
+
+  ## C. AML 业务流程、交易监控与可解释性
+
+  可补：
+
+  - Anti-Money Laundering Alert Optimization Using Machine Learning with Graphs
+    这篇非常贴合真实银行 AML：规则系统产生 alerts，ML 做 alert triage，用图特征降低 false positive。它报告了在真实银
+    行数据上减少大量误报、保持较高 true positive detection 的目标。比纯 Elliptic 更接近金融机构工作流。
+
+  - Machine Learning in Transaction Monitoring: The Prospect of xAI
+    这篇适合支撑“为什么 AML 模型必须可解释”。它关注 transaction monitoring 中不同责任方对 xAI 的需求，能帮助你把
+    GNNExplainer 从技术展示提升到合规/审计叙事。
+
+  这两篇对 portfolio 很有价值，因为它们把项目从“crypto graph classification”拉回“financial crime operations”。
+
+  2. 补充 dynamic / temporal graph 基础论文
+
+  项目四主文档里提到 EvolveGCN，但 reading list 里没有独立列出来。建议补到必读或至少强选读：
+
+  - EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs
+    Elliptic 原始论文用过 EvolveGCN，项目四如果要做 temporal split 或动态图，这是直接基础。
+
+  - Temporal Graph Networks for Deep Learning on Dynamic Graphs
+    TGN 是动态图学习更通用的框架，适合 Research-grade 版本。你不一定实现，但应该读它来理解 event-based dynamic graph
+    和 snapshot-based graph 的差异。
+
+  建议在文档里明确区分：
+
+  Snapshot temporal graph: 每个时间步一张图，例如 Elliptic 的 49 steps。
+  Event-based temporal graph: 每笔交易是带 timestamp 的事件，例如 TGN 更适合。
+
+  这个区分很重要，否则“时序图”会写得太泛。
+
+  3. 增加不平衡与半监督图学习
+
+  现在文档最后提到 precision@k / recall@k，但缺少专门的 imbalanced graph learning 支撑。AML 的少数类问题不是普通
+  class imbalance，因为图结构会让 oversampling 更复杂。
+
+  建议补：
+
+  - GraphSMOTE: Imbalanced Node Classification on Graphs with Graph Neural Networks
+    用来说明不能简单把普通 SMOTE 套到图节点上，因为新合成节点还需要合理的边关系。
+
+  - focal loss / class-balanced loss 相关材料可以作为工程方法，不一定列论文。
+
+  然后在项目实施中明确：
+  class_weight / focal loss / threshold tuning / precision@k 是 MVP；GraphSMOTE 是扩展，不要一开始就做。
+
+  4. 可解释性部分需要独立成节
+
+  现在只在最后提到 GNNExplainer。建议新增：
+
+  ## D. Explainable GNN for AML
+
+  至少补：
+
+  - GNNExplainer: Generating Explanations for Graph Neural Networks
+    这是图解释的基础论文。项目中可以输出：可疑地址的 ego-subgraph、关键邻居、关键边、关键特征。
+
+  还建议把解释目标写得更业务化：
+
+  不是解释“模型为什么分数高”，而是解释“这个 alert 为什么值得 investigator 优先看”。
+
+  AML 里解释的使用者不是 ML 研究员，而是 compliance analyst / investigator。
+
+  5. 加一张“项目可执行分层表”
+
+  目前 reading list 很强，但容易把项目四推向 research project。建议加一个“读完后怎么落地”的表：
+
+   层级               目标                                                           论文支撑
+  ━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   MVP                Elliptic++ EDA + XGBoost baseline + temporal split             Weber 2019, Elmougy 2023
+  ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
+   Portfolio-ready    GraphSAGE/GAT + precision@k + investigator budget              Weber, Elliptic++
+  ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
+   Strong version     EvolveGCN/TGN + GNNExplainer                                   EvolveGCN, TGN, GNNExplainer
+  ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
+   Research-grade     Elliptic2 subgraph classification / directed multigraph GNN    Bellei 2024, Egressy 2024
+
+  这样能防止项目被 Elliptic2、Egressy 这些高难内容拖慢。
+
+  需要小修的地方
+
+  - project4-reading-list.md:64 可以注明 arXiv 是 2023，会议版是 AAAI 2024，避免年份看起来不一致。
+  - project4-reading-list.md:56 建议标注“Research-grade，不建议 MVP 实现”。49M 节点簇 / 196M 边对本地资源和工程复杂
+    度要求很高。
+
+  - project4-reading-list.md:50 建议升为 ⭐ 或“强选读”。它解决真实 AML 最大问题之一：真实数据标签不完整，合成数据有
+    完整 ground truth。
+
+  - “NVIDIA / Thoughtworks 工业博客”如果要写进 README，建议只作为辅助材料，主论据仍用论文，不要让博客承担核心论证。
+
+  建议补充到文档的论文
+
+  ### ⭐ Anti-Money Laundering Alert Optimization Using Machine Learning with Graphs
+  - 重点：真实银行 AML alert triage；规则系统 + ML + 图特征；贴近金融机构工作流。
+
+  ### ⭐ EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs
+  - 重点：动态图 GNN；Elliptic AML 时序实验的重要基础。
+
+  ### ○ Temporal Graph Networks for Deep Learning on Dynamic Graphs
+  - 重点：event-based dynamic graph；适合 Research-grade 扩展。
+
+  ### ○ GraphSMOTE: Imbalanced Node Classification on Graphs with Graph Neural Networks
+  - 重点：图上的少数类学习，说明普通 SMOTE 不能直接套用。
+
+  ### ⭐ GNNExplainer: Generating Explanations for Graph Neural Networks
+  - 重点：为 AML investigator 生成关键子图和关键特征解释。
+
+  ### ○ Machine Learning in Transaction Monitoring: The Prospect of xAI
+  - 重点：transaction monitoring 里的 xAI、审计和责任边界。
+
+  最终建议
+
+  这份 reading list 已经有很强的研究味道。下一步最该补的不是更多 GNN 模型，而是三件事：真实 AML workflow、动态图/时
+  间切分、可解释与 investigator workload。补上这些后，项目四会从“一个很好的 GNN 项目”升级为“能对伦敦金融犯罪/RegTech
+  岗位说得通的 AML portfolio”。
+
+  参考来源：Elliptic++ arXiv 2306.06108、Elliptic2 arXiv 2404.19109、Egressy directed multigraph GNN arXiv
+  2306.11586、Altman AML synthetic transactions arXiv 2306.16424、EvolveGCN arXiv 1902.10191、TGN arXiv 2006.10637、
+  GNNExplainer arXiv 1903.03894、GraphSMOTE arXiv 2103.08826。

@@ -1,0 +1,23 @@
+# 数据治理硬规矩：绝不提交原始大数据（见主文档 6.2）
+data/**
+!data/README.md
+!data/checksums.sha256
+
+# 模型与大产物
+models/
+*.pkl
+*.joblib
+*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# 密钥
+.env
+
+# 保留实验落盘与报告
+!results/experiments.csv

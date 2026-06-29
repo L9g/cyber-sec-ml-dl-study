@@ -1,0 +1,194 @@
+% =====================================================================
+% Master BibTeX — DS/ML/DL × Cyber-Security 本地知识库
+% 唯一引用来源（single source of truth）。其它文档一律按 bibkey 引用，
+% 不要再粘贴 BibTeX。新增论文先进这里，再在 topics 索引里加一句 takeaway。
+% bibkey 规范：authorYYYYkeyword（全小写）。
+% 标 "note = {待核}" 的条目，作者/venue/页码落地引用前需二次核对。
+% =====================================================================
+
+% ---------------------------------------------------------------------
+% T1  安全 ML 方法学与诚实评估
+% ---------------------------------------------------------------------
+@inproceedings{sommer2010outside,
+  title={Outside the Closed World: On Using Machine Learning for Network Intrusion Detection},
+  author={Sommer, Robin and Paxson, Vern},
+  booktitle={IEEE Symposium on Security and Privacy (S\&P)},
+  pages={305--316}, year={2010}
+}
+
+@inproceedings{arp2022dodonts,
+  title={Dos and Don'ts of Machine Learning in Computer Security},
+  author={Arp, Daniel and Quiring, Erwin and Pendlebury, Feargus and Warnecke, Alexander and Pierazzi, Fabio and Wressnegger, Christian and Cavallaro, Lorenzo and Rieck, Konrad},
+  booktitle={USENIX Security Symposium}, year={2022},
+  note={期刊版 "Pitfalls in ML for Computer Security", CACM 2024}
+}
+
+@inproceedings{apruzzese2023sok,
+  title={SoK: Pragmatic Assessment of Machine Learning for Network Intrusion Detection},
+  author={Apruzzese, Giovanni and Laskov, Pavel and Schneider, Johannes},
+  booktitle={IEEE European Symposium on Security and Privacy (EuroS\&P)}, year={2023}
+}
+
+@inproceedings{pendlebury2019tesseract,
+  title={{TESSERACT}: Eliminating Experimental Bias in Malware Classification across Space and Time},
+  author={Pendlebury, Feargus and Pierazzi, Fabio and Jordaney, Roberto and Kinder, Johannes and Cavallaro, Lorenzo},
+  booktitle={USENIX Security Symposium}, year={2019},
+  note={2024 扩展版 arXiv:2402.01359（加 Kan, McFadden, Arp）。原域为 Android malware，非 NIDS}
+}
+
+@article{axelsson2000baserate,
+  title={The Base-Rate Fallacy and the Difficulty of Intrusion Detection},
+  author={Axelsson, Stefan},
+  journal={ACM Transactions on Information and System Security (TISSEC)},
+  volume={3}, number={3}, pages={186--205}, year={2000},
+  note={CCS 1999 前身；base-rate fallacy 在入侵检测的奠基文献}
+}
+
+% ---------------------------------------------------------------------
+% T2  NIDS / 网络流量、数据集与跨数据集泛化
+% ---------------------------------------------------------------------
+@inproceedings{engelen2021troubleshooting,
+  title={Troubleshooting an Intrusion Detection Dataset: the CICIDS2017 Case Study},
+  author={Engelen, Gints and Rimmer, Vera and Joosen, Wouter},
+  booktitle={IEEE Security and Privacy Workshops (WTMC)}, year={2021}
+}
+
+@inproceedings{lanvin2023errors,
+  title={Errors in the CICIDS2017 Dataset and the Significant Differences in Detection Performances It Makes},
+  author={Lanvin, Maxime and Gimenez, Pierre-Fran{\c{c}}ois and Han, Yufei and Majorczyk, Fr{\'e}d{\'e}ric and M{\'e}, Ludovic and Totel, Eric},
+  booktitle={CRiSIS}, year={2022},
+  note={会议 CRiSIS 2022；论文集 Springer LNCS 13857（2023 出版）}
+}
+
+@article{sarhan2021standardfeature,
+  title={Towards a Standard Feature Set for Network Intrusion Detection System Datasets},
+  author={Sarhan, Mohanad and Layeghy, Siamak and Portmann, Marius},
+  journal={Mobile Networks and Applications}, year={2021}, note={arXiv:2101.11315}
+}
+
+@inproceedings{liu2022cns,
+  title={Error Prevalence in NIDS datasets: A Case Study on CIC-IDS-2017 and CSE-CIC-IDS-2018},
+  author={Liu, Lisa and Engelen, Gints and Lynar, Timothy and Essam, Daryl and Joosen, Wouter},
+  booktitle={IEEE Conference on Communications and Network Security (CNS)}, year={2022},
+  note={合并修正版 CICIDS-2017/2018（含 Attempted 标签）的引用来源；作者列表落地前二次核对}
+}
+
+@article{sarhan2022evaluating,
+  title={Evaluating Standard Feature Sets Towards Increased Generalisability and Explainability of ML-based Network Intrusion Detection},
+  author={Sarhan, Mohanad and Layeghy, Siamak and Portmann, Marius},
+  journal={Big Data Research}, year={2022}, note={arXiv:2104.07183}
+}
+
+@article{crossdataset2024nids,
+  title={On the Cross-Dataset Generalization of Machine Learning for Network Intrusion Detection},
+  author={待核},
+  journal={arXiv preprint arXiv:2402.10974}, year={2024},
+  note={作者/venue 待核；LycoS 修正数据集相关}
+}
+
+@inproceedings{ring2019survey,
+  title={A Survey of Network-based Intrusion Detection Data Sets},
+  author={Ring, Markus and Wunderlich, Sarah and Scheuring, Deniz and Landes, Dieter and Hotho, Andreas},
+  booktitle={Computers \& Security}, year={2019}, note={arXiv:1903.02460}
+}
+
+@inproceedings{moustafa2015unswnb15,
+  title={{UNSW-NB15}: A Comprehensive Data Set for Network Intrusion Detection Systems},
+  author={Moustafa, Nour and Slay, Jill},
+  booktitle={Military Communications and Information Systems Conference (MilCIS)}, year={2015}
+}
+
+@inproceedings{tavallaee2009nslkdd,
+  title={A Detailed Analysis of the {KDD} {CUP} 99 Data Set},
+  author={Tavallaee, Mahbod and Bagheri, Ebrahim and Lu, Wei and Ghorbani, Ali A.},
+  booktitle={IEEE Symposium on Computational Intelligence for Security and Defense Applications (CISDA)}, year={2009},
+  note={提出 NSL-KDD}
+}
+
+% ---------------------------------------------------------------------
+% T3  图学习与金融犯罪 (AML)
+% ---------------------------------------------------------------------
+@inproceedings{weber2019aml,
+  title={Anti-Money Laundering in Bitcoin: Experimenting with Graph Convolutional Networks for Financial Forensics},
+  author={Weber, Mark and Domeniconi, Giacomo and Chen, Jie and Weidele, Daniel Karl I. and Bellei, Claudio and Robinson, Tom and Leiserson, Charles E.},
+  booktitle={KDD Workshop on Anomaly Detection in Finance}, year={2019}
+}
+
+@inproceedings{elmougy2023ellipticpp,
+  title={Demystifying Fraudulent Transactions and Illicit Nodes in the Bitcoin Network for Financial Forensics},
+  author={Elmougy, Youssef and Liu, Ling},
+  booktitle={ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD)}, year={2023},
+  note={Elliptic++}
+}
+
+@inproceedings{altman2023synthetic,
+  title={Realistic Synthetic Financial Transactions for Anti-Money Laundering Models},
+  author={Altman, Erik and Blanu{\v{s}}a, Jovan and von Niederh{\"a}usern, Luc and Egressy, B{\'e}ni and Anghel, Andreea and Atasu, Kubilay},
+  booktitle={NeurIPS Datasets and Benchmarks}, year={2023}, note={AMLworld; 完整 ground truth}
+}
+
+@article{bellei2024shape,
+  title={The Shape of Money Laundering: Subgraph Representation Learning on the Blockchain with the Elliptic2 Dataset},
+  author={Bellei, Claudio and Xu, Muhua and others},
+  journal={arXiv preprint arXiv:2404.19109}, year={2024}, note={Elliptic2；作者列表待核}
+}
+
+@inproceedings{egressy2024provably,
+  title={Provably Powerful Graph Neural Networks for Directed Multigraphs},
+  author={Egressy, B{\'e}ni and von Niederh{\"a}usern, Luc and Blanu{\v{s}}a, Jovan and Altman, Erik and Wattenhofer, Roger and Atasu, Kubilay},
+  booktitle={AAAI Conference on Artificial Intelligence}, year={2024}, note={arXiv 2023 预印本}
+}
+
+@inproceedings{pareja2020evolvegcn,
+  title={{EvolveGCN}: Evolving Graph Convolutional Networks for Dynamic Graphs},
+  author={Pareja, Aldo and Domeniconi, Giacomo and Chen, Jie and Ma, Tengfei and Suzumura, Toyotaro and Kanezashi, Hiroki and Kaler, Tim and Schardl, Tao B. and Leiserson, Charles E.},
+  booktitle={AAAI Conference on Artificial Intelligence}, year={2020}
+}
+
+@inproceedings{rossi2020tgn,
+  title={Temporal Graph Networks for Deep Learning on Dynamic Graphs},
+  author={Rossi, Emanuele and Chamberlain, Ben and Frasca, Fabrizio and Eynard, Davide and Monti, Federico and Bronstein, Michael},
+  booktitle={ICML Workshop on Graph Representation Learning}, year={2020}
+}
+
+@inproceedings{ying2019gnnexplainer,
+  title={{GNNExplainer}: Generating Explanations for Graph Neural Networks},
+  author={Ying, Rex and Bourgeois, Dylan and You, Jiaxuan and Zitnik, Marinka and Leskovec, Jure},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2019}
+}
+
+@inproceedings{zhao2021graphsmote,
+  title={{GraphSMOTE}: Imbalanced Node Classification on Graphs with Graph Neural Networks},
+  author={Zhao, Tianxiang and Zhang, Xiang and Wang, Suhang},
+  booktitle={ACM International Conference on Web Search and Data Mining (WSDM)}, year={2021}
+}
+
+@article{eddin2021aml,
+  title={Anti-Money Laundering Alert Optimization Using Machine Learning with Graphs},
+  author={Naser Eddin, Ahmad and others},
+  journal={arXiv preprint arXiv:2112.07508}, year={2021}, note={Feedzai；作者列表待核}
+}
+
+% ---------------------------------------------------------------------
+% T4  对抗 ML 与鲁棒性
+% ---------------------------------------------------------------------
+@article{apruzzese2021modeling,
+  title={Modeling Realistic Adversarial Attacks against Network Intrusion Detection Systems},
+  author={Apruzzese, Giovanni and Andreolini, Mauro and Ferretti, Luca and Marchetti, Mirco and Colajanni, Michele},
+  journal={ACM Digital Threats: Research and Practice (DTRAP)}, year={2021}, note={DOI 10.1145/3469659；作者列表待核}
+}
+
+@article{evasion2023impractical,
+  title={Evasion Adversarial Attacks Remain Impractical Against Machine-Learning-Based Network Intrusion Detection Systems, Especially Dynamic Ones},
+  author={待核},
+  journal={arXiv preprint arXiv:2306.05494}, year={2023}, note={作者/venue 待核}
+}
+
+% ---------------------------------------------------------------------
+% T8  表示学习 / 安全基础模型
+% ---------------------------------------------------------------------
+@inproceedings{lin2022etbert,
+  title={{ET-BERT}: A Contextualized Datagram Representation with Pre-training Transformers for Encrypted Traffic Classification},
+  author={Lin, Xinjie and Xiong, Gang and Gou, Gaopeng and Li, Zhen and Shi, Junzheng and Yu, Jing},
+  booktitle={The Web Conference (WWW)}, year={2022}
+}

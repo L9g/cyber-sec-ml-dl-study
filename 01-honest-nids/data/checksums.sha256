@@ -1,0 +1,15 @@
+# NetFlow v3（当前主基座，2026-06-28）— 来源/核验见 reports/data-prep-v3.md
+# 原始 CSV（data/v3_raw/，Kaggle seyhed/nf-*-v3 镜像，钉住溯源）
+242a6971cc801eae621b1fc4d966db2cd0af9cc866805f36a6fc5d0058dfbb74  data/v3_raw/NF-CICIDS2018-v3.csv
+53ec8f468a43ede9b1536fabc0390af2fa33ab4312b23ce4d864f186a4651f78  data/v3_raw/NF-ToN-IoT-v3.csv
+4ebb97bd74412d566137d95a6fc3ffd8f374f1cf8cfe204d007848e7a668f9b5  data/v3_raw/NF-UNSW-NB15-v3.csv
+# 工作用 parquet（duckdb zstd 转换，data/）
+3060f6a6a52432a1531ad6a7e002787ec933911e62dcc26e7f0b444e4aefaa29  data/NF-CSE-CIC-IDS2018-v3.parquet
+2d88c8b98a53788ea88f0cba6587abb135e02cd328e520965ce4aa32607cf13f  data/NF-ToN-IoT-v3.parquet
+8b7fea38feb7e7bbd48e13d00cf758364bce224476be46cde9377c03cb92dcc0  data/NF-UNSW-NB15-v3.parquet
+
+# NetFlow v2（已弃用，保留历史）
+7500a64cc12f25542772d9c43d6438234333c2f8c4b45471425fcde18899e5c4  data/NF-UNSW-NB15-v2.parquet
+4e8c9ac5cfda1ba1b3f1dbe450feed0dde48b809425bf65eabcd23086afb6624  data/NF-ToN-IoT-V2.parquet
+f299c8a2cb1223912438aae68f3818f898c97ce1824b2deef618f56f266562cb  data/NF-CSE-CIC-IDS2018-V2.parquet
+f20e86a939f9eb53b06ace15de4cc977ed61c02e538c6465efe72b635448e939  data/NetFlow v2 Features.csv

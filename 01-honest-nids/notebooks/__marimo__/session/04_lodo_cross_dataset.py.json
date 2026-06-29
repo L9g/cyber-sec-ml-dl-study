@@ -1,0 +1,116 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.23.11",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "1d0db38904205bec4d6f6f6a1f6cec3e",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "76541a49f40b2120fbb9d1ed3cb57cee",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"04-lodo\">04 \u00b7 LODO \u8de8\u6570\u636e\u96c6\u6cdb\u5316\u77e9\u9635 \u2014\u2014 \u771f\u6b63\u7684\u8bda\u5b9e\u843d\u5dee</h1>\n<blockquote>\n<span class=\"paragraph\"><strong>\u672c\u7cfb\u5217\uff1a01 \u6545\u610f\u8e29\u5751 \u2192 03 \u8bda\u5b9e\u5355\u6570\u636e\u96c6 \u2192 04\uff08\u672c\u6587\uff09\u8de8\u6570\u636e\u96c6\u6cdb\u5316\u6d4b\u8bd5</strong></span>\n</blockquote>\n<hr />\n<h2 id=\"_1\">\u6838\u5fc3\u95ee\u9898</h2>\n<span class=\"paragraph\">notebook 03 \u7684\u8bda\u5b9e baseline \u5728 NF-UNSW-NB15-v2 \u4e0a\u4f9d\u7136\u6f02\u4eae\uff1amacro-F1 = 0.9796\uff0c\nPR-AUC = 0.993\u3002\u6a21\u578b\u591f\u597d\u4e86\u5417\uff1f</span>\n<span class=\"paragraph\"><strong>\u8fd8\u6ca1\u6709\u3002</strong></span>\n<span class=\"paragraph\">UNSW-NB15 \u662f\u4e00\u4e2a<strong>\u7279\u5b9a\u5b9e\u9a8c\u5ba4\u3001\u7279\u5b9a\u65f6\u6bb5\u3001\u7279\u5b9a\u653b\u51fb\u5de5\u5177</strong>\u4e0b\u91c7\u96c6\u7684\u6570\u636e\u96c6\u3002\n\u771f\u5b9e SOC \u8fd0\u7ef4\u7684\u7f51\u7edc\uff0c\u6d41\u91cf\u5206\u5e03\u548c\u653b\u51fb\u6784\u6210\u8ddf\u8fd9\u91cc\u7684\u6d4b\u8bd5\u96c6\u5b8c\u5168\u4e0d\u540c\u3002\n\u6211\u4eec\u9700\u8981\u95ee\uff1a<strong>\u5728\u53e6\u4e00\u4e2a\u7f51\u7edc\u73af\u5883\u91cc\uff0c\u8fd9\u4e2a\u6a21\u578b\u8fd8\u80fd\u7528\u5417\uff1f</strong></span>\n<hr />\n<h2 id=\"leave-one-dataset-out-lodo\">\u65b9\u6cd5\uff1aLeave-One-Dataset-Out (LODO)</h2>\n<span class=\"paragraph\">\u7528 NetFlow-v2 \u540c\u4e00\u7279\u5f81\u4f53\u7cfb\uff08<code>sarhan2021standardfeature</code>\uff09\u4e0b\u7684\u4e09\u4e2a\u72ec\u7acb\u6570\u636e\u96c6\uff1a</span>\n<table>\n<thead>\n<tr>\n<th>\u6570\u636e\u96c6</th>\n<th>\u6765\u6e90</th>\n<th>\u6d41\u91cf\u89c4\u6a21</th>\n<th>\u653b\u51fb\u5360\u6bd4</th>\n<th>\u4e3b\u8981\u653b\u51fb\u7c7b\u578b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>NF-UNSW-NB15-v2</td>\n<td>UNSW Canberra \u5b9e\u9a8c\u5ba4</td>\n<td>1.99M</td>\n<td><strong>3.8%</strong></td>\n<td>9 \u7c7b\uff08DoS\u3001Exploits\u3001Recon...\uff09</td>\n</tr>\n<tr>\n<td>NF-ToN-IoT-V2</td>\n<td>UNSW IoT \u5b9e\u9a8c\u5ba4</td>\n<td>13.1M</td>\n<td><strong>72.6%</strong></td>\n<td>IoT \u8bbe\u5907\u653b\u51fb</td>\n</tr>\n<tr>\n<td>NF-CSE-CIC-IDS2018-V2</td>\n<td>Canadian Institute CIC</td>\n<td>17.1M</td>\n<td><strong>11.8%</strong></td>\n<td>Web \u653b\u51fb\u3001\u66b4\u529b\u7834\u89e3\u3001Bot...</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">\u4e09\u4e2a\u6570\u636e\u96c6\u5728\u4e0d\u540c\u7684\u7f51\u7edc\u3001\u4e0d\u540c\u7684\u5e74\u4efd\u3001\u4e0d\u540c\u7684\u653b\u51fb\u573a\u666f\u4e0b\u91c7\u96c6\u3002\n<strong>\u653b\u51fb\u5360\u6bd4\u5dee\u5f02\u60ac\u6b8a</strong>\uff083.8% vs 72.6%\uff09\u662f\u540e\u9762\u7ed3\u679c\u7684\u5173\u952e\u89e3\u91ca\u56e0\u7d20\u3002</span>\n<span class=\"paragraph\">LODO \u65b9\u6cd5\uff1a\u5728\u4e00\u4e2a\u6570\u636e\u96c6\u4e0a\u8bad\u7ec3\uff0c\u5728\u53e6\u4e00\u4e2a\u6570\u636e\u96c6\u4e0a\u6d4b\u8bd5\uff086 \u4e2a train\u2192test \u5bf9\uff09\u3002\n\u7ed3\u679c\u7ec4\u6210 3\u00d73 \u77e9\u9635\uff0c\u5bf9\u89d2\u7ebf = \u540c\u5206\u5e03\uff0c\u975e\u5bf9\u89d2\u7ebf = \u8de8\u6570\u636e\u96c6\u6cdb\u5316\u3002</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "1530fb2faa8f194d75c2fd3113a79f7a",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "0e3995bf5c10b4c68401d1285d85a2a3",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "e6a2d97cb6e0813c36095dbf0f9272fe",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "06905b6e875c209b8a8d62fa943801d7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"lodo\">LODO \u8bad\u7ec3 + \u8bc4\u4f30</h2>\n<span class=\"paragraph\">\u5bf9\u6bcf\u4e2a\u8bad\u7ec3\u96c6\uff1a\u8bad\u7ec3\u4e00\u4e2a vanilla LightGBM\uff08\u65e0 class_weight\uff0c\u4e0e notebook 03 \u540c\u914d\u7f6e\uff09\uff0c\n\u7136\u540e\u5728\u53e6\u5916\u4e24\u4e2a\u6d4b\u8bd5\u96c6\u4e0a\u5206\u522b\u8bc4\u4f30\u3002\u5171 6 \u4e2a\u5b9e\u9a8c\uff0c\u5f62\u6210 3\u00d73 \u77e9\u9635\u7684\u975e\u5bf9\u89d2\u9879\u3002</span>\n<span class=\"paragraph\"><strong>\u6ce8\u610f</strong>\uff1a\u6211\u4eec\u4e0d\u5728\u8fd9\u91cc\u505a class_weight \u8c03\u6574\uff0c\u76ee\u7684\u662f\u8ba9\u300c\u662f\u5426\u6cdb\u5316\u300d\u8fd9\u4e2a\u95ee\u9898\u6709\u5e72\u51c0\u7684\u7b54\u6848\uff0c\n\u4e0d\u88ab\u300cclass_weight \u9009\u62e9\u300d\u8fd9\u4e2a\u72ec\u7acb\u53d8\u91cf\u6c61\u67d3\u3002</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "cdf84d8b4d2c53d3f942714e3715a5d5",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "63441b07ee9291d0c9f8363a61922f43",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"33-macro-f1\">\u7ed3\u679c\uff1a3\u00d73 \u77e9\u9635\uff08macro-F1\uff09</h2>\n<span class=\"paragraph\">\u5bf9\u89d2\u7ebf\u53c2\u8003\u503c\u6765\u81ea notebook 03\uff08UNSW \u540c\u5206\u5e03\uff0cmacro-F1 \u2248 0.980\uff09\u3002\n\u975e\u5bf9\u89d2\u7ebf\u662f\u8de8\u6570\u636e\u96c6\u6cdb\u5316\u7684\u5b9e\u9645\u8868\u73b0\u3002</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "00aba8d4adb82232f5efb93b28e111b7",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "79466a43344c2f6901232ed57510f1b8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"pr-auc\">\u5173\u952e\u53d1\u73b0\uff1aPR-AUC \u8dcc\u7834\u968f\u673a\u57fa\u7ebf</h2>\n<span class=\"paragraph\">macro-F1 \u5df2\u7ecf\u5f88\u5dee\uff08\u6700\u597d 0.52\uff0c\u540c\u5206\u5e03\u662f 0.98\uff09\uff0c\u4f46\u8fd8\u4e0d\u662f\u6700\u9707\u64bc\u7684\u53d1\u73b0\u3002</span>\n<span class=\"paragraph\"><strong>PR-AUC \u6bd4 macro-F1 \u66f4\u8bda\u5b9e</strong>\uff1a\u5bf9\u4e0d\u5e73\u8861\u6570\u636e\uff0cPR-AUC \u7684\u968f\u673a\u57fa\u7ebf\u4e0d\u662f 0.5\uff0c\n\u800c\u662f<strong>\u6d4b\u8bd5\u96c6\u7684\u6b63\u6837\u672c\uff08\u653b\u51fb\uff09\u5360\u6bd4</strong>\uff08[[feedback-pr-auc-imbalanced]]\uff09\u3002\n\u653b\u51fb\u8d8a\u5c11\uff0c\u968f\u673a\u6a21\u578b\u7684 PR-AUC \u8d8a\u4f4e\uff0c\u6240\u4ee5\u300c0.07 \u7684 PR-AUC\u300d\u5728 UNSW\uff08\u653b\u51fb 3.8%\uff09\u4e0a\u610f\u5473\u7740\u4ec5\u6bd4\u968f\u673a\u597d\u4e00\u70b9\uff0c\n\u4f46\u5728 CSE-CIC\uff08\u653b\u51fb 11.8%\uff09\u4e0a\uff0c0.07 \u7684 PR-AUC <strong>\u4f4e\u4e8e\u968f\u673a\u57fa\u7ebf</strong>\u3002</span>\n<span class=\"paragraph\">\u4e0b\u8868\u76f4\u63a5\u5bf9\u6bd4\u5b9e\u6d4b PR-AUC \u4e0e\u8be5\u6d4b\u8bd5\u96c6\u7684\u968f\u673a\u57fa\u7ebf\uff1a</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "30a369758173639d93c2e5bb3befa5ad",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "3e56a6a1ee6d92f5ca3d86f4adefd447",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>6 \u5bf9\u4e2d\u6709 4 \u5bf9 PR-AUC \u4f4e\u4e8e\u968f\u673a\u57fa\u7ebf\u3002</strong>\n\u8fd9\u610f\u5473\u7740\u6a21\u578b\u7684\u653b\u51fb\u6392\u5e8f\u80fd\u529b\u4e0d\u5982\u778e\u731c\u2014\u2014\u7ed9\u6240\u6709\u6d41\u91cf\u968f\u673a\u6253\u5206\uff0c\u53cd\u800c\u6bd4\u6a21\u578b\u7684\u8f93\u51fa\u66f4\u63a5\u8fd1\u771f\u5b9e\u6807\u7b7e\u3002</span>\n<hr />\n<h2 id=\"prior-shift\">\u4e3a\u4ec0\u4e48\u4f1a\u8fd9\u6837\uff1f\u2014\u2014 \u653b\u51fb\u57fa\u7387\u504f\u79fb\uff08Prior Shift\uff09</h2>\n<span class=\"paragraph\">\u6700\u76f4\u63a5\u7684\u89e3\u91ca\u6765\u81ea\u653b\u51fb\u5360\u6bd4\u7684\u5dee\u5f02\uff1a</span>\n<table>\n<thead>\n<tr>\n<th>\u8bad\u7ec3\u96c6\u653b\u51fb\u7387</th>\n<th>\u6d4b\u8bd5\u96c6\u653b\u51fb\u7387</th>\n<th>\u6548\u679c</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><strong>UNSW 3.8%</strong> \u2192 \u6d4b <strong>ToN-IoT 72.6%</strong></td>\n<td>\u6a21\u578b\u5b66\u4f1a\u300c\u653b\u51fb\u5f88\u7a00\u5c11\u2192\u9608\u503c\u4fdd\u5b88\u300d</td>\n<td>attack_recall = 0.006\uff0c\u51e0\u4e4e\u5168\u90e8\u653b\u51fb\u88ab\u5224\u826f\u6027</td>\n</tr>\n<tr>\n<td><strong>ToN-IoT 72.6%</strong> \u2192 \u6d4b <strong>UNSW 3.8%</strong></td>\n<td>\u6a21\u578b\u5b66\u4f1a\u300c\u653b\u51fb\u662f\u4e3b\u6d41\u2192\u9608\u503c\u6fc0\u8fdb\u300d</td>\n<td>FPR = 0.349\uff0c\u6bcf 3 \u6761\u826f\u6027\u6d41\u5c31\u6709 1 \u6761\u88ab\u544a\u8b66</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">\u6a21\u578b\u5728\u8bad\u7ec3\u65f6<strong>\u5b66\u5230\u4e86\u57fa\u7387</strong>\uff08\u300c\u8fd9\u4e2a\u7f51\u7edc\u91cc\u653b\u51fb\u5360 X%\u300d\uff09\uff0c\u800c\u4e0d\u662f\u53ef\u8fc1\u79fb\u7684\u653b\u51fb\u7279\u5f81\u6a21\u5f0f\u3002\n\u8fd9\u662f Arp P9\uff08lab-only evaluation\uff09\u7684\u6838\u5fc3\u673a\u5236\uff1a\n\u6a21\u578b\u5728\u540c\u4e00\u5b9e\u9a8c\u5ba4\u6570\u636e\u96c6\u7684\u6d4b\u8bd5\u96c6\u4e0a\u8868\u73b0\u5b8c\u7f8e\uff0c\u4f46\u8fd9\u4e2a\u300c\u5b8c\u7f8e\u300d\u4e0d\u80fd\u9884\u6d4b\u771f\u5b9e\u90e8\u7f72\u8868\u73b0\u3002</span>\n<hr />\n<h2 id=\"notebook-03\">\u4e0e notebook 03 \u7684\u7ed3\u8bba\u5982\u4f55\u8854\u63a5</h2>\n<ul>\n<li>notebook 03 \u7ed3\u8bba\uff1a\u5355\u6570\u636e\u96c6\u5185\uff0c\u8bda\u5b9e baseline \u843d\u5dee \u2248 0\u3002\u6a21\u578b PR-AUC = 0.993\u3002</li>\n<li>notebook 04 \u7ed3\u8bba\uff1a\u6362\u4e00\u4e2a\u6570\u636e\u96c6\uff0c4/6 \u7684 PR-AUC \u4f4e\u4e8e\u968f\u673a\u57fa\u7ebf\u3002</li>\n</ul>\n<span class=\"paragraph\">\u8fd9\u4e24\u4e2a\u7ed3\u8bba<strong>\u4e0d\u77db\u76fe</strong>\u3002\u5b83\u4eec\u5171\u540c\u8bf4\u660e\uff1a\u9ad8 PR-AUC \u662f\u6570\u636e\u96c6\u5185\u7684\u53ef\u5206\u6027\uff0c\u4e0d\u662f\u68c0\u6d4b\u80fd\u529b\u7684\u8bc1\u660e\u3002\n\u8fd9\u6b63\u662f\u672c\u9879\u76ee\u7684\u8bda\u5b9e\u8bba\u70b9\u2014\u2014<strong>\u6211\u4eec\u523b\u610f\u66b4\u9732\u4e86\u5b9e\u9a8c\u5ba4\u6570\u5b57\u4e0e\u771f\u5b9e\u90e8\u7f72\u4e4b\u95f4\u7684\u65ad\u5c42</strong>\u3002</span>\n<hr />\n<h2 id=\"_1\">\u5bf9\u5b9e\u8df5\u7684\u542f\u793a</h2>\n<ol>\n<li><strong>\u5355\u4e00\u6570\u636e\u96c6\u7684\u7ed3\u679c\u4e0d\u53ef\u5916\u63a8</strong>\uff1a\u53d1\u8bba\u6587\u65f6\u8981\u505a LODO\uff08\u6216\u81f3\u5c11\u62a5\u544a\u591a\u6570\u636e\u96c6\u7ed3\u679c\uff09\u3002</li>\n<li><strong>\u62a5\u544a PR-AUC \u8981\u540c\u65f6\u7ed9\u51fa\u968f\u673a\u57fa\u7ebf</strong>\uff1a\u8ba9\u8bfb\u8005\u80fd\u5224\u65ad\u6570\u5b57\u662f\u5426\u6709\u5b9e\u9645\u610f\u4e49\u3002</li>\n<li><strong>\u653b\u51fb\u7387\u662f\u5206\u5e03\u5916\u6cdb\u5316\u7684\u6700\u5927\u969c\u788d\u4e4b\u4e00</strong>\uff1a\u771f\u5b9e\u90e8\u7f72\u9700\u8981\u8003\u8651\u76ee\u6807\u7f51\u7edc\u7684\u653b\u51fb\u7387\uff0c\n   \u800c\u4e0d\u662f\u76f4\u63a5\u4f7f\u7528\u5b9e\u9a8c\u5ba4\u8c03\u597d\u7684\u9608\u503c\u3002</li>\n<li><strong>class_weight \u4e0d\u89e3\u51b3\u8de8\u6570\u636e\u96c6\u95ee\u9898</strong>\uff1a\u5b83\u8c03\u6574\u9608\u503c\uff0c\u4f46\u4e0d\u80fd\u6539\u53d8\u7279\u5f81\u7a7a\u95f4\u7684\u5206\u5e03\u6f02\u79fb\u3002</li>\n</ol></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

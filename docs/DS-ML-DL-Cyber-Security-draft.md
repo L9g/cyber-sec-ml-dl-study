@@ -294,7 +294,7 @@ CIC 数据集索引里还列出这些 2024-2025/2026 项目：`CIC-BCCC-NRC Tabu
 
 英国 cyber 岗位总体增长很快。ITPro 引 Socura 研究称，英国 cyber jobs 自 2021 年以来增长约 **194%**，接近 84,000 名从业者，但技能短缺仍明显。来源：[ITPro UK cyber jobs report](https://www.itpro.com/business/really-positive-signs-uk-cyber-jobs-have-tripled-since-2021-but-skills-shortages-are-still-hampering-industry-growth)。
 
-**你应该重点准备的作品集方向**
+**你应该重点准备的项目方向**
 
 最适合投这类岗位的不是普通 Titanic/House Price 项目，而是：
 
@@ -323,7 +323,7 @@ CIC 数据集索引里还列出这些 2024-2025/2026 项目：`CIC-BCCC-NRC Tabu
 
 <details><summary>2 previous messages</summary>
 
-> 我会按这 5 个作品集方向分别找近期、可公开使用的数据源，优先选 2023-2026 的数据集；如果某方向没有足够新的高质量数据，会补充仍然常用但较旧的 benchmark。
+> 我会按这 5 个项目方向分别找近期、可公开使用的数据源，优先选 2023-2026 的数据集；如果某方向没有足够新的高质量数据，会补充仍然常用但较旧的 benchmark。
 >
 > <details><summary>Searched the web</summary>
 >
@@ -346,7 +346,7 @@ CIC 数据集索引里还列出这些 2024-2025/2026 项目：`CIC-BCCC-NRC Tabu
 > </details>
 </details>
 
-可以。按你前面那 5 个作品集方向，我建议优先看这些“近期数据集/benchmark”。
+可以。按你前面那 5 个项目方向，我建议优先看这些“近期数据集/benchmark”。
 
 **1. Network Intrusion Detection Notebook**
 
@@ -401,7 +401,7 @@ CIC 数据集索引里还列出这些 2024-2025/2026 项目：`CIC-BCCC-NRC Tabu
 最推荐：
 
 - [AgentDojo 2024](https://arxiv.org/abs/2406.13352) / [GitHub](https://github.com/ethz-spylab/agentdojo)
-  97 个真实 agent tasks，629 个 security test cases，专门评估 prompt injection attacks/defenses。非常适合做 AI Security Architect 方向作品集。
+  97 个真实 agent tasks，629 个 security test cases，专门评估 prompt injection attacks/defenses。非常适合做 AI Security Architect 方向项目。
 
 - [AgentDyn 2026](https://arxiv.org/abs/2602.03117) / [GitHub](https://github.com/leolee99/AgentDyn)
   新一代动态 prompt injection benchmark，60 个开放式任务，560 个 injection test cases，场景包括 Shopping、GitHub、Daily Life。
@@ -495,7 +495,7 @@ Magnitude / Radius / Covariance / Variance / Weight
 
 目录结构也比较适合做项目：官方说主目录包含 `PCAP`、`CSV`、`Example` notebook、`Supplementary material`。这意味着你可以做两种层次的作品：直接用 CSV 做 ML/DL，也可以从 PCAP 重新抽特征，展示网络安全工程能力。
 
-它的特点是：攻击面很广，尤其适合做多分类 IDS；攻击者和受害者都是 IoT 设备，这比很多旧数据集更贴近 IoT 场景；DDoS/DoS/Mirai/Recon 类别很适合做岗位作品集里的 “network traffic threat detection”。
+它的特点是：攻击面很广，尤其适合做多分类 IDS；攻击者和受害者都是 IoT 设备，这比很多旧数据集更贴近 IoT 场景；DDoS/DoS/Mirai/Recon 类别很适合做岗位项目里的 “network traffic threat detection”。
 
 **CICIoMT2024**
 来源：[CIC IoMT dataset 2024](https://www.unb.ca/cic/datasets/iomt-dataset-2024.html)
@@ -641,7 +641,7 @@ CICIoMT2024 的问题更像：
 
 > 一个医疗 IoT 网络里，如何在多协议、设备生命周期和高安全要求下检测攻击，并让检测结果可信、可解释？
 
-**对作品集的启发**
+**对项目的启发**
 
 如果你想展示“我会做通用网络入侵检测”，选 **CICIoT2023**。
 如果你想展示“我理解行业场景、协议差异、设备画像和可解释安全 AI”，选 **CICIoMT2024**。
@@ -712,11 +712,11 @@ CICIoMT2024 的问题更像：
 
 4. [Dynamic Temporal Positional Encodings for Early Intrusion Detection in IoT](https://arxiv.org/abs/2506.18114)
    思路：Transformer + 动态时间位置编码，关注 **early detection**，不是等完整流量结束后才分类。
-   值得学：这是很新颖的作品集角度。你可以做“前 20%/40%/60% 流量就预测攻击”的实验，比普通分类更贴近实时 IDS。
+   值得学：这是很新颖的项目角度。你可以做“前 20%/40%/60% 流量就预测攻击”的实验，比普通分类更贴近实时 IDS。
 
 5. [Explainable Threat Attribution for IoT Networks Using Conditional SHAP](https://arxiv.org/abs/2603.22771)
    思路：把 30+ 攻击变体聚合成语义攻击类，用 gradient boosting + SHAP 做全局和类别级解释。
-   值得学：这非常适合求职作品集。不要只说模型识别了攻击，还要解释：DDoS 是靠 packet size uniformity、TCP flags、timing 识别；Recon 是靠不同 flow behaviour 识别。
+   值得学：这非常适合求职项目。不要只说模型识别了攻击，还要解释：DDoS 是靠 packet size uniformity、TCP flags、timing 识别；Recon 是靠不同 flow behaviour 识别。
 
 6. [Lightweight LLMs for Network Attack Detection in IoT Networks](https://arxiv.org/abs/2601.15269)
    思路：把结构化网络流特征转成文本 prompt，用 QLoRA 微调轻量 LLM，再用 RAG 尝试 unseen attack detection。
@@ -742,7 +742,7 @@ CICIoMT2024 的问题更像：
 
 4. [A Hierarchical IDS for Zero-Day Attack Detection in IoMT Networks](https://arxiv.org/abs/2508.10346)
    思路：分层 IDS：近边缘先做 attack/not attack，后续层再识别攻击类型和未知攻击。
-   值得学：这是很好的系统设计思路。作品集可以画成 edge/cloud pipeline，而不是只有一个 notebook 模型。
+   值得学：这是很好的系统设计思路。项目可以画成 edge/cloud pipeline，而不是只有一个 notebook 模型。
 
 5. [A Robust Cross-Domain IDS using BiGRU-LSTM-Attention](https://arxiv.org/abs/2508.12470)
    思路：在 CICIoMT2024 和 EdgeIIoTset 上做 medical + industrial IoT cross-domain。
@@ -801,7 +801,7 @@ CICIoMT2024 的问题更像：
 > </details>
 </details>
 
-下面是“AgentDojo / AgentDyn prompt injection 防御”这个项目组合可以优先关注的近期数据集/benchmark。按今天 **2026-06-24** 看，最适合做作品集的是 **AgentDojo + AgentDyn**，再补充 jailbreak / RAG / detector 数据集。
+下面是“AgentDojo / AgentDyn prompt injection 防御”这个项目组合可以优先关注的近期数据集/benchmark。按今天 **2026-06-24** 看，最适合做项目的是 **AgentDojo + AgentDyn**，再补充 jailbreak / RAG / detector 数据集。
 
 **优先级 1：AgentDojo**
 - 链接：[AgentDojo paper](https://arxiv.org/abs/2406.13352) / [GitHub](https://github.com/ethz-spylab/agentdojo)
@@ -812,7 +812,7 @@ CICIoMT2024 的问题更像：
 - 为什么适合项目：它不是简单“给 LLM 一个恶意 prompt”，而是模拟真实 agent：用户任务 + 工具调用 + 外部数据 + 攻击目标 + 防御策略。
 - 可以学习的点：tool filtering、prompt injection detector、attack success rate、utility/security trade-off。
 
-**适合作品集题目：**
+**适合项目题目：**
 > Evaluating Prompt Injection Defenses for Tool-Using LLM Agents with AgentDojo
 
 **优先级 2：AgentDyn**
@@ -824,7 +824,7 @@ CICIoMT2024 的问题更像：
 - 支持防御：`tool_filter`、`transformers_pi_detector`、`PIGuard`、`PromptGuard2`、`CaMeL`、`Progent`、`DRIFT` 等。
 - 为什么适合项目：非常贴近 AI Security Engineer / AI Security Architect 岗位，能展示你理解 agent 安全不是单点分类，而是系统级安全。
 
-**适合作品集题目：**
+**适合项目题目：**
 > Are Prompt Injection Defenses Deployable? A Comparative Study on AgentDyn
 
 **优先级 3：JailbreakBench**
@@ -833,9 +833,9 @@ CICIoMT2024 的问题更像：
 - 内容：100 个 harmful behavior categories + open jailbreak artifacts + standardized scoring。
 - 方向：更偏 **jailbreak robustness**，不是 agent tool-use prompt injection。
 - 为什么值得补充：LLM Red Team 岗位会同时关心 jailbreak 和 prompt injection。AgentDojo/AgentDyn 是 agent 安全，JailbreakBench 是模型安全。
-- 注意：作品集中不要展示可直接滥用的攻击细节，重点做评估框架、分类、防御和风险报告。
+- 注意：项目中不要展示可直接滥用的攻击细节，重点做评估框架、分类、防御和风险报告。
 
-**适合作品集题目：**
+**适合项目题目：**
 > Building a Safe Jailbreak Evaluation Harness with JailbreakBench
 
 **优先级 4：RAG / AI Agent Prompt Injection Benchmark**
@@ -851,7 +851,7 @@ CICIoMT2024 的问题更像：
 - 为什么值得看：企业 AI 安全岗位非常关心 RAG 数据泄露、检索内容污染、跨上下文污染。
 - 如果数据/代码可访问，适合做 RAG 防御项目；如果不可直接访问，也可以借鉴它的 taxonomy 设计自己的小型 benchmark。
 
-**适合作品集题目：**
+**适合项目题目：**
 > RAG Prompt Injection Defense: Detection, Guardrails and Response Verification
 
 **优先级 5：StruQ**
@@ -859,7 +859,7 @@ CICIoMT2024 的问题更像：
 - 年份：2024。
 - 核心思想：把 prompt 和 data 分成两个结构化通道，让模型只服从 instruction channel，不服从 data channel。
 - 为什么值得学：这是非常清晰的防御思想，适合写成系统设计项目。
-- 作品集角度：可以和 AgentDojo/AgentDyn 结合，比较普通 system prompt、delimiter、tool filter、structured query 的差异。
+- 项目角度：可以和 AgentDojo/AgentDyn 结合，比较普通 system prompt、delimiter、tool filter、structured query 的差异。
 
 **优先级 6：CaMeL**
 - 链接：[Defeating Prompt Injections by Design / CaMeL](https://arxiv.org/abs/2503.18813)
@@ -885,7 +885,7 @@ CICIoMT2024 的问题更像：
 
 **我建议的项目数据组合**
 
-第一版作品集不要贪多，建议这样选：
+第一版项目不要贪多，建议这样选：
 
 1. **主数据/benchmark：AgentDojo**
    - 做 baseline attack + baseline defense。
@@ -1095,7 +1095,7 @@ LLM agent + tools + benchmark tasks
    - 对高风险动作二次确认：转账、发邮件、删文件、改密码、外发数据。
    - 企业里很实用。
 
-**如果做成作品集，建议这样设计**
+**如果做成项目，建议这样设计**
 
 项目名可以用：
 
@@ -1260,7 +1260,7 @@ Detector+tool filter medium    lowest           medium
    - 重点不是新日志源，而是 **怎么正确评估 LLM SOC classifier**。
    - 新颖点：指出严格 regex parser 会把模型评估成 0%，而 fuzzy parser 可恢复到 76% threat accuracy。
    - 适合项目：做一个“LLM SOC 输出评估器”，避免因为解析格式导致假低分。
-   - 对作品集很有价值：Detection Engineer 不只要建模，还要懂评估陷阱。
+   - 对项目很有价值：Detection Engineer 不只要建模，还要懂评估陷阱。
 
 **非常适合 SIEM Pipeline 的近期数据**
 
@@ -1333,7 +1333,7 @@ Mordor / EVTX-ATTACK-SAMPLES
 + Splunk BOTS
 ```
 
-**最适合做成作品集的题目**
+**最适合做成项目的题目**
 
 ```text
 SIEM Log Intelligence Pipeline:
@@ -1369,7 +1369,7 @@ MITRE ATT&CK Mapping, Severity Scoring, and SOC Triage with ML/LLM
 - Detection Engineer
 - SOC Automation Engineer
 
-核心思路不是做通用 Kaggle 分类项目，而是围绕真实安全场景构建作品集：
+核心思路不是做通用 Kaggle 分类项目，而是围绕真实安全场景构建项目：
 
 1. 网络/IoT/IoMT 入侵检测
 2. Agent Prompt Injection 防御
@@ -1776,12 +1776,12 @@ log normalization -> ATT&CK mapping -> severity scoring -> triage report
 
 ---
 
-## 6. 最终作品集结构
+## 6. 最终项目结构
 
-建议 GitHub portfolio 组织为：
+建议 GitHub 仓库组织为：
 
 ```text
-cyber-ml-portfolio/
+cyber-ml-projects/
   01-iot-iomt-intrusion-detection/
     notebooks/
     src/

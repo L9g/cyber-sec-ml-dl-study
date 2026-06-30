@@ -96,7 +96,7 @@
 - **作者/出处**：Pareja 等（IBM）。
 - **链接**：https://arxiv.org/abs/1902.10191
 - **核心**：用 RNN 演化 GCN 的权重以适应图随时间变化；Elliptic 原始论文（Weber 2019）即用它做时序实验，并显示图的时序价值在此处才更明显。
-- **对项目四**：你做 temporal split / 动态图的**直接基线**，Portfolio-ready 档的时序模型。主文档提过它，这里单列为必读。
+- **对项目四**：你做 temporal split / 动态图的**直接基线**，Reference-grade 档的时序模型。主文档提过它，这里单列为必读。
 
 ### ○ Temporal Graph Networks (TGN) for Deep Learning on Dynamic Graphs (2020)
 - **作者/出处**：Rossi 等（Twitter）。
@@ -143,7 +143,7 @@
 | 层级 | 目标 | 论文支撑 |
 |---|---|---|
 | **MVP** | Elliptic++ EDA + XGBoost baseline + temporal split | Weber 2019, Elmougy 2023 |
-| **Portfolio-ready** | GraphSAGE/GAT + precision@k + investigator budget + EvolveGCN 时序 | Weber, Elmougy, EvolveGCN, Eddin |
+| **Reference-grade** | GraphSAGE/GAT + precision@k + investigator budget + EvolveGCN 时序 | Weber, Elmougy, EvolveGCN, Eddin |
 | **Strong** | EvolveGCN/TGN + GNNExplainer 业务化解释 | EvolveGCN, TGN, GNNExplainer |
 | **Research-grade** | Elliptic2 子图分类 / 有向多重图 GNN | Bellei 2024, Egressy 2024 |
 

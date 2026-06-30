@@ -1,18 +1,41 @@
-# Portfolio Project Plan Draft: ML/DL x Network Security
+# Network Detection Project Plan Draft: ML/DL x Network Security
 
 > Status: draft
 >
-> Purpose: turn the discussion after `01-honest-nids` into a concrete portfolio roadmap. The goal is not to build more benchmark classifiers, but to show credible ability across IP networking, network security, detection engineering, ML/DL, and operational risk.
+> Purpose: turn the discussion after `01-honest-nids` into a concrete project roadmap. The goal is not to build more benchmark classifiers, but to show credible ability across IP networking, network security, detection engineering, ML/DL, and operational risk.
+
+---
+
+## 0. 定位:这是候选池,不是替换主线计划
+
+**本文档是对 `DS-ML-DL-Cyber-Security-v2.md`(v2.1)既定四项目的补充,不是替换。** 使用规则:
+
+- **主线 = v2.1 四项目**(① 诚实 NIDS ② LLM 注入防御 ③ SIEM/SOC 日志智能 ④ AML 图学习),按市场广度铺,优先推到 Reference-grade。其中 ④ AML-GNN 是伦敦金融命中率最高的钩子,优先级高于本文档任何候选。
+- **本文档 = 预备役 backlog**。只在「某个具体岗位 JD 需要某块信号」时**抽一个**做加分项,或用来**替换**主线里事后发现较弱的一环。判断标准是「我现在投的岗位缺哪块信号」,不是「这个项目本身好不好」。
+- 不要把这 8 个当 8 个待办;核心四 + 全部候选 = 规模失控,违背 MVP 分档原则。
+
+**与主线的重叠关系(避免重复投资):**
+
+| 本文档候选 | 与主线关系 |
+|---|---|
+| A. Zeek+ATT&CK / G. 内部威胁(LANL 图) | **重叠主线 ③ SIEM/SOC**——视为 ③ 的实现选型,不另开项目 |
+| H. 对抗鲁棒性 | v2.1 已规划为「项目②/④的对抗扩展」——是已规划扩展,非新项目 |
+| **B. DNS / C. BGP / D. TLS / E. VPC / F. IoT** | **真正净新增**(网络协议/路由深度)。其中 **C. BGP 最值得保留**——唯一能给出「比普通 ML 候选人更懂 IP 网络」的稀缺信号 |
+
+**抽取任一候选前的硬检查:**
+1. **data feasibility 先验**(隐形杀手):如 DNS DGA 数据集按家族 trivially 可分,不做 family-holdout 就是 honest-nids 虚高的翻版;BGP 劫持 ground truth 稀疏需手工策展;CERT 内部威胁是合成数据(公认不真实)。
+2. **挂上方法学主轴**:每个补充项目都带 泄漏检查 + base-rate/alert budget + drift,延续 honest-nids 的「诚实评估」签名方法论。
+3. 下方 §4 优先级矩阵的 `Overall` 列未透明聚合子分(implementation risk 像未作减项,如 C 风险 5 仍 Overall 4),仅作粗排参考,决策时按目标岗位重新加权。
 
 ---
 
 ## 1. Starting Point
 
-`01-honest-nids` is valuable because it does the opposite of a typical "99% accuracy NIDS" portfolio project. It focuses on leakage, temporal split, cross-dataset generalisation, base-rate thinking, and honest evaluation.
+`01-honest-nids` is valuable because it does the opposite of a typical "99% accuracy NIDS" project. It focuses on leakage, temporal split, cross-dataset generalisation, base-rate thinking, and honest evaluation.
 
 Its main limitation is also clear: public NetFlow benchmark datasets make the project look closer to a research-reproduction and evaluation-methodology exercise than a deployable security engineering system. That is not a flaw in the current project; it is a boundary imposed by the data and task design.
 
-The next portfolio projects should therefore add the missing dimensions:
+The next projects should therefore add the missing dimensions:
 
 - Telemetry-first thinking: Zeek, Suricata, DNS, TLS, BGP, VPC Flow Logs, auth logs.
 - Detection engineering: ATT&CK mapping, rules, hypotheses, runbooks, analyst workflow.
@@ -21,7 +44,7 @@ The next portfolio projects should therefore add the missing dimensions:
 - Network expertise: protocol semantics, routing, flow/session behaviour, asset context.
 - Governance: model cards, data cards, privacy limits, monitoring and auditability.
 
-The portfolio should show that I can move from "train a classifier" to "design a detection capability."
+The project should show that I can move from "train a classifier" to "design a detection capability."
 
 ---
 
@@ -35,7 +58,7 @@ Use these principles when selecting projects after `01-honest-nids`.
 | Network depth | It should require actual understanding of protocols, logs, routing, flows, or telemetry sources. |
 | ML/DL fit | The model should solve a real problem such as prioritisation, anomaly detection, representation learning, sequence modelling, or drift monitoring. |
 | Data availability | Public data must be obtainable and legally usable; when data is imperfect, the limitation must be explicit. |
-| Portfolio contrast | Each project should show a different capability from `01-honest-nids`. |
+| Project contrast | Each project should show a different capability from `01-honest-nids`. |
 | Deployability | The output should include a detector, runbook, dashboard, API, reproducible pipeline, or monitoring story. |
 
 ---
@@ -76,7 +99,7 @@ Build a telemetry-first detection lab from PCAP/network traffic to Zeek logs, ru
 - Notebook/report comparing rule-only, ML-only, and hybrid detection.
 - Small dashboard or static HTML report for alert review.
 
-**Portfolio value**
+**Project value**
 
 Very high. This is closest to real detection engineering and SOC analytics. It directly addresses the "research reproduction" weakness of project 1.
 
@@ -114,7 +137,7 @@ It moves from NetFlow-level classification to protocol-aware detection. DNS is a
 - Family-holdout evaluation to test generalisation.
 - Detection runbook for suspicious host/domain investigation.
 
-**Portfolio value**
+**Project value**
 
 High. It shows protocol understanding, practical feature engineering, and a meaningful place for DL.
 
@@ -128,7 +151,7 @@ Use public BGP data to detect routing anomalies such as origin changes, route le
 
 **Why this complements project 1**
 
-This is the strongest IP networking project. It demonstrates internet routing knowledge rather than only security ML. It is also rare in typical ML/security portfolios.
+This is the strongest IP networking project. It demonstrates internet routing knowledge rather than only security ML. It is also rare in typical ML/security projects.
 
 **Possible data sources**
 
@@ -152,7 +175,7 @@ This is the strongest IP networking project. It demonstrates internet routing kn
 - Visualisation of prefix/origin/AS-path changes.
 - Clear explanation of what ML adds over deterministic routing checks.
 
-**Portfolio value**
+**Project value**
 
 Very high for network engineering credibility. Higher implementation risk than DNS or Zeek because BGP data parsing and ground truth are harder.
 
@@ -189,7 +212,7 @@ Modern networks are encrypted. This project shows practical constraints: privacy
 - Privacy and drift note.
 - Triage guide explaining how an analyst would investigate a suspicious TLS flow.
 
-**Portfolio value**
+**Project value**
 
 High. Good bridge between network security and applied ML, but must avoid overclaiming because public labelled datasets can be messy.
 
@@ -226,7 +249,7 @@ Cloud security is an employable direction. This project converts NetFlow-style t
 - Dashboard or notebook showing alert volume and false-positive assumptions.
 - Optional Docker Compose / local generator.
 
-**Portfolio value**
+**Project value**
 
 High for employability. Less research depth, more engineering and cloud-security realism.
 
@@ -261,7 +284,7 @@ It shifts from attack classification to asset and behaviour modelling, which is 
 - Unknown-device detection experiment.
 - Operational notes: how this would support asset inventory or NAC.
 
-**Portfolio value**
+**Project value**
 
 Medium to high. Strong practical story if framed as asset security, weaker if it becomes just another IoT dataset classifier.
 
@@ -298,7 +321,7 @@ It adds identity, graph analytics, temporal sequences, and SIEM-style telemetry.
 - ML triage model and rule baseline.
 - Investigation notes for sample alerts.
 
-**Portfolio value**
+**Project value**
 
 High for SOC/security data science roles. Lower direct IP networking signal, but good complement after a network-heavy project.
 
@@ -333,7 +356,7 @@ It deepens the existing project rather than creating a new domain. It is useful 
 - Robustness matrix by model and feature group.
 - Clear conclusion on what attacks are realistic.
 
-**Portfolio value**
+**Project value**
 
 Medium to high. Strong theory and rigor, but less helpful for fixing the "not deployable enough" weakness unless paired with a telemetry project.
 
@@ -343,7 +366,7 @@ Medium to high. Strong theory and rigor, but less helpful for fixing the "not de
 
 Scoring scale: 1 = weak, 5 = strong.
 
-| Candidate | Network depth | ML/DL depth | Security engineering realism | Data feasibility | Portfolio distinctiveness | Implementation risk | Overall |
+| Candidate | Network depth | ML/DL depth | Security engineering realism | Data feasibility | Project distinctiveness | Implementation risk | Overall |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | A. Zeek + ATT&CK Detection Lab | 5 | 4 | 5 | 4 | 5 | 3 | 5 |
 | B. DNS Tunneling / DGA | 4 | 5 | 4 | 4 | 4 | 2 | 4 |
@@ -363,9 +386,9 @@ Interpretation:
 
 ---
 
-## 5. Recommended Portfolio Shape
+## 5. Recommended Project Shape
 
-### Core portfolio narrative
+### Core project narrative
 
 1. **Project 1: Honest NIDS**
    - Message: I understand why benchmark NIDS results are often misleading.

@@ -16,6 +16,10 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
+# marimo 运行缓存（含旧叙事快照，会污染 portfolio——只提交 .py 源）
+notebooks/__marimo__/
+__marimo__/
+
 # 密钥
 .env
 

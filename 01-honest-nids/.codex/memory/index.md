@@ -1,10 +1,10 @@
 # Memory Index
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 ## Project
 
-**Honest NIDS** is a portfolio project for roles at the intersection of IP
+**Honest NIDS** is a project for roles at the intersection of IP
 networking, network security, machine learning, and deep learning.
 
 The project is not a classifier leaderboard. Its purpose is to expose and avoid
@@ -33,9 +33,12 @@ identity shortcuts, and poor cross-dataset generalisation.
    shortcut learning, but they are not valid deployable detection evidence.
 5. Absolute timestamps are for temporal splitting and audit only; they should
    not be used as inference features in honest or LODO evaluations.
+6. Post-review wording boundary: keep LODO/PR-AUC as the main stress-test
+   story, but do not overclaim FPR, threshold tuning, or model-invariant
+   collapse beyond what the tables support.
 
 ## How To Add Memory
 
 Add concise dated entries to `current-context.md` or `decisions.md`.
-If the memory is reader-facing and part of the portfolio story, also add or link
+If the memory is reader-facing and part of the project story, also add or link
 the relevant report under `reports/`.

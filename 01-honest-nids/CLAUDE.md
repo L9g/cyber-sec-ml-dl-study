@@ -7,7 +7,7 @@
 - Codex 专用项目记忆在 `.codex/memory/`。新会话开始或做方法学决策前，先读：
   `.codex/memory/index.md`、`.codex/memory/current-context.md`、`.codex/memory/decisions.md`。
 - 用户说“存记忆 / 保存上下文 / 把这个结论存进项目上下文”时，优先更新 `.codex/memory/`；
-  若内容面向 portfolio 读者，再同步到 `reports/*.md` 或 README 链接。
+  若内容面向项目读者，再同步到 `reports/*.md` 或 README 链接。
 - `.codex/memory/` 只存稳定项目事实、决策和待办；不要存原始数据、密钥、token、长篇论文摘录。
 
 ## 数据基座（NetFlow v3）

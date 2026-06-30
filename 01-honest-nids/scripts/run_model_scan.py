@@ -1,6 +1,6 @@
 """P6 多算法基线/鲁棒性扫描（可直接 python scripts/run_model_scan.py 执行）。
 
-把 §2 的「LightGBM 跨数据集崩塌」升级为「**所有模型一起崩**」(Arp P6 / Layeghy A2)。
+把 §2 的「LightGBM 跨数据集崩塌」升级为「**四模型族都无法恢复分布内表现**」(Arp P6 / Layeghy A2)。
 对每个模型（SingleFeature/LogReg/MLP/LightGBM）测两件事：
 
   1. **分布内（honest temporal）**：在每个数据集自己的真 temporal split 上评估
@@ -10,10 +10,9 @@
 
 对照口径：分布内强 vs 跨数据集崩 = 失败根因是评估/数据而非模型容量。
 
-与 §2 头条（run_lodo.py，LightGBM @3M，时间戳入特征）的两点差异（已在 findings 说明）：
-  - cap 统一 1M（含 LightGBM 重跑），让四模型表内部可比；方向性结论不受 cap 影响。
-  - **绝对时间戳 FLOW_START/END 一律不入特征**（环境标识、不可迁移），与 §3 口径一致——
-    §2 头条曾把它们当特征，本扫描修正为剔除。
+与 §2 头条（run_lodo.py，LightGBM @3M）的差异：仅 **cap**（本扫描统一 1M 让四模型表内部可比，
+头条 @3M）；方向性结论不受 cap 影响。**两者特征口径已一致**——绝对时间戳 FLOW_START/END
+一律不入特征（环境标识、不可迁移，与 §3 一致；2026-06-29 统一对齐后 run_lodo.py 也已剔除）。
 
 结果 upsert 进 results/experiments.csv（canonical），并写一份去规范化的
 results/model_scan.csv（含 fpr/baseline/mode，便于报告与 notebook 直接出表）。

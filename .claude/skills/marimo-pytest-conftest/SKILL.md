@@ -72,7 +72,7 @@ pytest notebooks/nb.py -v
 `N passed, 0 skipped` 才算真修好——`skipped` 可能是别的 import 失败后
 `pytest.skip` 吞掉错误（呼应 gotchas #5）。
 
-## 真实案例（本作品集）
+## 真实案例（本项目集）
 
 `01-honest-nids/notebooks/conftest.py`（2026-06-29 加）：
 历史上 nb02/nb04 的 pytest 都因此报 `No module named 'config'`；

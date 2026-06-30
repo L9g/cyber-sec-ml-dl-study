@@ -40,7 +40,7 @@ description: >
 - [ ] 换一个目录启动，还跑得通吗？
 - [ ] 路径是不是都从一个 `config.ROOT` 派生？
 
-## 真实案例（本作品集）
+## 真实案例（本项目集）
 `01-honest-nids/config.py` 已用 `Path(__file__).resolve().parent` 锚定，
 数据/结果路径从未出问题；**唯独 marimo notebook 里 `sys.path.append("..")`
 是漏网的散落相对路径**——papermill 从 `notebooks/` 跑时 `".."` 正好指到项目根，

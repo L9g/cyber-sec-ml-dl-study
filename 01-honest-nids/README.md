@@ -1,13 +1,28 @@
 # Honest NIDS — Exposing Data Leakage & Cross-Dataset Generalisation Gaps
 
-> 网络入侵检测 (NIDS) 的 portfolio 高度饱和，把 CICIoT2023 刷到 99% 没有差异化。
-> **本项目的卖点不是分类器，而是揭穿并避免 benchmark 虚高**：数据泄漏、随机切分过于乐观、跨数据集泛化崩塌——资深从业者最常吐槽的痛点。
+> 网络入侵检测 (NIDS) 的公开 benchmark 普遍存在**虚高**：把 CICIoT2023 之类刷到 99% 很容易，
+> 但这个分数往往来自数据泄漏、过于乐观的随机切分、以及只在单一数据集内自评。
+> **本项目研究的不是又一个分类器，而是如何揭穿并避免这种虚高**——量化数据泄漏、
+> 用真 temporal split 与跨数据集 LODO 检验泛化，并在真实基率下重新解读误报。
 
-配套文档：`../docs/DS-ML-DL-Cyber-Security-v2.md` 第三章项目一 ｜ 阅读清单：`../docs/project1-reading-list.md` ｜ 文献库：`../knowledge-base/`
+配套文档：`../docs/DS-ML-DL-Cyber-Security-v2.md`（项目一章节）｜ 阅读清单：`../docs/project1-reading-list.md` ｜ 文献库：`../knowledge-base/`
 
 ---
 
-## 当前档位：Portfolio-ready（LODO/IP 消融/多模型扫描已完成）
+## 三个数字
+
+| 数字 | 含义 |
+|---|---|
+| **1.0 → 0.03** | 分布内 PR-AUC 满分（NF-UNSW-NB15-v3）；换一个数据集（→UNSW 方向）崩到 **随机基线以下** |
+| **40** | UNSW-v3 全集（2.37M 流）只有 40 个 src IP、100% label 纯——「检测」其实是背诵一张查找表 |
+| **0.998** | 连单特征决策树桩在分布内都能拿到 macro-F1=0.998 —— 满分来自合成 benchmark 指纹，不是攻击本质 |
+
+> 一句话：**PR-AUC=1.0 的 NIDS 换个数据集可能低于随机基线**，且四个模型族都救不回来——
+> 高分源于数据/评估设定，而非可泛化的攻击特征（`arp2022dodonts` P9 / Layeghy 2024 A2）。
+
+---
+
+## 当前完成度
 
 | 步骤 | 内容 | 状态 |
 |---|---|---|
@@ -15,17 +30,17 @@
 | 2 诚实重做 | 真 temporal split + 去泄漏特征 → PR-AUC 仍 1.0（合成数据平凡可分） | ✅ |
 | 2.1 IP 泄漏消融 | IP-only 满分→跨域崩塌；OHE 封堵，delta=0.000 | ✅ |
 | 3 跨数据集 LODO | 3×3 矩阵 + 多模型扫描 + 训练量敏感性审计 | ✅ |
-| 4 可解释 (SHAP) | SHAP global + per-attack 类 | ⏳ Portfolio+ |
-| 5 漂移监控 | 性能随时间衰减曲线 | ⏳ Research |
+| 4 可解释 (SHAP) | SHAP global + per-attack 类 | ⏳ 计划中 |
+| 5 漂移监控 | 性能随时间衰减曲线 | ⏳ 研究级 |
 
-不在 Portfolio 阶段上 Docker / CI / Makefile（见主文档三档原则）。
+当前为完整评估阶段（MVP 之上）；按主文档三档原则，此阶段不上 Docker / CI / Makefile。
 
 ---
 
 ## 问题背景
 
 找攻击与一般 ML 任务本质不同——极低基率、误报代价高、缺真实标注、闭世界假设不成立（`sommer2010outside`）。
-因此**只看 accuracy 会严重误导**；这正是项目一要量化展示的（`arp2022dodonts` 的 10 大陷阱 → 见 `reports/findings.md`）。
+因此**只看 accuracy 会严重误导**；这正是项目要量化展示的（`arp2022dodonts` 的 10 大陷阱 → 见 `reports/findings.md`）。
 
 前置决策：主模型为何选择 LightGBM 见 `reports/model-selection-decision.md`。
 
@@ -50,9 +65,9 @@ NF-UNSW-NB15-v3 上，乐观（随机切分 + 含 IP）与诚实（真 temporal 
 | CSE-CIC → UNSW | 0.050 | 0.054 | **−0.004 ⚠️ 低于随机** |
 | CSE-CIC → ToN-IoT | 0.429 | 0.390 | +0.039 |
 
-随机基线 = 测试集攻击占比（PR-AUC 特有，不是 0.5）。**四模型族**（stump / LogReg / MLP / LightGBM）在「测 UNSW」方向 PR-AUC 全落 0.03–0.11——崩塌由**测哪个数据集**决定，不由模型族（Layeghy 2024 A2）。
+随机基线 = 测试集攻击占比（PR-AUC 特有，不是 0.5）。**四模型族**（stump / LogReg / MLP / LightGBM）在「测 UNSW」方向 PR-AUC 全落 0.03–0.11——落在哪个量级带主要由**测哪个数据集**决定，不由模型族（Layeghy 2024 A2；同一对内读数仍受模型/训练量影响）。
 
-**Portfolio 核心句**：分布内 PR-AUC=1.0 的 NIDS，换一个数据集可能低于随机基线，且换四个模型一起崩——说明高分源于合成 benchmark 特有指纹，而非攻击的可泛化本质（`arp2022dodonts` P9）。
+**核心结论**：分布内 PR-AUC=1.0 的 NIDS，换一个数据集可能低于随机基线，且**四个模型族都无法恢复分布内表现**——说明问题主要来自数据/评估设定而非单一模型选择，高分源于合成 benchmark 特有指纹，而非攻击的可泛化本质（`arp2022dodonts` P9）。
 
 ### ③ IP 泄漏：背诵不是检测；跨域是纯负债
 
@@ -144,10 +159,12 @@ pytest notebooks/01_optimistic_baseline.py \
 
 - **数据治理**：仓库不含原始数据，仅 `data/README.md` 的下载指引 + SHA-256；许可证写入 `data/README.md`（UQ 学术条款）。
 - **PII 处理**：v3 含真实 IP（PII）；实验中仅用于消融演示、不落盘原始 IP；生产使用应脱敏或直接剔除（`drop_leakage_features` 默认删 IP/端口）。
-- **诚实评估即 model risk 意识**：暴露泄漏/泛化崩塌、用真实 base rate 重解读误报，呼应 NCSC 检测指南与英国岗位的 model risk / 可审计信号。
+- **诚实评估 = model risk 意识**：暴露泄漏 / 泛化崩塌、用真实 base rate 重解读误报，对应 NCSC 检测指南所强调的可审计与 model risk 实践。
 
 ---
 
 ## 参考
 
 BibTeX 见 `../knowledge-base/references.bib`。核心：`sommer2010outside`, `arp2022dodonts`, `pendlebury2019tesseract`, `axelsson2000baserate`, `engelen2021troubleshooting`, `lanvin2023errors`, `sarhan2021standardfeature`, `crossdataset2024nids`。
+</content>
+</invoke>

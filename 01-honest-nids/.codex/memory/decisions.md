@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 ## 2026-06-29 — Model Selection
 
@@ -66,3 +66,42 @@ Reasoning:
 - They are valid for temporal splitting and drift/time audit.
 - They should be dropped from honest and LODO feature matrices unless the
   experiment is explicitly labelled as a timestamp-included sensitivity audit.
+
+## 2026-06-30 — Post-Review Wording Boundaries
+
+Decision: keep the main story, but tighten several claims before treating the
+project as final deliverable material.
+
+Boundaries:
+
+- LODO failure should not be described as purely low-FPR漏检. Current FPR values
+  include roughly `0.064-0.105` in some directions, so the correct framing is
+  direction-dependent: some failures are mostly missed attacks, others also
+  create meaningful false positives.
+- Do not claim threshold tuning "cannot help" unless backed by recall-at-fixed
+  FPR, precision-at-alert-budget, or PR-curve operating-point analysis.
+  Evidence that positives are not in `[0.4, 0.5)` only rules out a cheap
+  `0.5 -> 0.4` threshold tweak.
+- "All model families collapse" means no tested model family restores
+  in-distribution-like PR-AUC under LODO. It does not mean the model rows are
+  numerically clustered; PR-AUC still varies materially by model, cap, and
+  train/test direction.
+- Tracked marimo session JSON files are risky if stale. They currently contain
+  old v2 text and should be ignored, deleted from version control, or regenerated
+  before any release commit.
+
+## 2026-06-30 — Drop "portfolio" Vocabulary Workspace-Wide
+
+Decision: remove all "portfolio" / "作品集" vocabulary across the workspace and
+read every deliverable as a genuine technical project, not a job-hunt artifact.
+
+- Delivery tier renamed: **MVP → Reference-grade → Research-grade** (the old
+  middle tier "Portfolio-ready" is retired). Use `Reference-grade` in all docs,
+  READMEs, reports, and reading lists going forward.
+- File `docs/portfolio-project-plan-draft.md` was renamed to
+  `docs/network-detection-candidates-draft.md`.
+- README and project-facing prose must not reference portfolio / 求职 / 面试 /
+  hiring framing. (This pass removed only the portfolio vocabulary; other
+  job-hunt words in the planning docs were left untouched unless asked.)
+- One identifier kept on purpose: the auto-memory slug
+  `project-cyber-ml-portfolio` (a pointer, not prose).

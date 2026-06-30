@@ -137,7 +137,7 @@
     这篇适合支撑“为什么 AML 模型必须可解释”。它关注 transaction monitoring 中不同责任方对 xAI 的需求，能帮助你把
     GNNExplainer 从技术展示提升到合规/审计叙事。
 
-  这两篇对 portfolio 很有价值，因为它们把项目从“crypto graph classification”拉回“financial crime operations”。
+  这两篇对项目很有价值，因为它们把项目从“crypto graph classification”拉回“financial crime operations”。
 
   2. 补充 dynamic / temporal graph 基础论文
 
@@ -197,7 +197,7 @@
   ━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    MVP                Elliptic++ EDA + XGBoost baseline + temporal split             Weber 2019, Elmougy 2023
   ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
-   Portfolio-ready    GraphSAGE/GAT + precision@k + investigator budget              Weber, Elliptic++
+   Reference-grade    GraphSAGE/GAT + precision@k + investigator budget              Weber, Elliptic++
   ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
    Strong version     EvolveGCN/TGN + GNNExplainer                                   EvolveGCN, TGN, GNNExplainer
   ─────────────────  ─────────────────────────────────────────────────────────────  ──────────────────────────────
@@ -240,7 +240,7 @@
 
   这份 reading list 已经有很强的研究味道。下一步最该补的不是更多 GNN 模型，而是三件事：真实 AML workflow、动态图/时
   间切分、可解释与 investigator workload。补上这些后，项目四会从“一个很好的 GNN 项目”升级为“能对伦敦金融犯罪/RegTech
-  岗位说得通的 AML portfolio”。
+  岗位说得通的 AML 项目”。
 
   参考来源：Elliptic++ arXiv 2306.06108、Elliptic2 arXiv 2404.19109、Egressy directed multigraph GNN arXiv
   2306.11586、Altman AML synthetic transactions arXiv 2306.16424、EvolveGCN arXiv 1902.10191、TGN arXiv 2006.10637、

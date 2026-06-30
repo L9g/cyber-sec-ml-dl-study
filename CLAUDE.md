@@ -1,4 +1,4 @@
-# Rules — cyber-sec 作品集（工作区根）
+# Rules — cyber-sec 项目集（工作区根）
 
 跨项目通用硬约束。项目特定规则见各 repo 的 `CLAUDE.md`（如 `01-honest-nids/CLAUDE.md`）。
 背景/理由在 `docs/` 与 auto-memory，本文件只列**要遵守什么**。
@@ -29,7 +29,7 @@
 - 展示用 `marimo run`（只读）；测试用 `python`/`pytest`。
 
 ## 交付与复现
-- 分档交付：**MVP → Portfolio-ready → Research-grade**；先把项目推到 MVP 再升档，避免大计划拖延。
+- 分档交付：**MVP → Reference-grade → Research-grade**；先把项目推到 MVP 再升档，避免大计划拖延。
 - 固定 `SEED=42`；实验结果落 `results/experiments.csv`，用 **upsert**（按逻辑键，不靠 timestamp）。
 
 ## 工作方式

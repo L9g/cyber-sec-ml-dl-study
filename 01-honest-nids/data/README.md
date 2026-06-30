@@ -57,5 +57,5 @@ sha256sum -c data/checksums.sha256
 
 ## 许可
 
-每个数据集的 license / 来源 URL / 再分发权限在升 Portfolio 档时写入 `../data_card.md`。
+每个数据集的 license / 来源 URL / 再分发权限在升 Reference-grade 档时写入 `../data_card.md`。
 用 Kaggle/HF 镜像前先确认其再分发合法。

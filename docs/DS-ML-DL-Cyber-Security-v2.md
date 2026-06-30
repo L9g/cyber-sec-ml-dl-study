@@ -1,6 +1,6 @@
 # Data Science / ML / DL × Cyber Security — 学习与项目实施计划
 
-> 目标：在英国求职 Cyber Security + ML/DL/Data Science 相关岗位，通过 portfolio 项目积累实战经验。
+> 目标：在英国求职 Cyber Security + ML/DL/Data Science 相关岗位，通过这些项目积累实战经验。
 >
 > 版本说明（v2.1）：在 v2 基础上做了两处结构性改进——(1) 项目组合补齐了「金融犯罪/AML 图学习」和「对抗 ML」两个英国高需求但原先空缺的方向；(2) 数据集库从「偏最新但部分 gated」调整为「最新 + 经典确定可得」并行，并标注了真实性/可获取性核实状态。
 
@@ -58,7 +58,7 @@
 
 ### 1.4 UK employer signals（治理与合规——英国岗位的隐性加分项）
 
-英国雇主（尤其金融、关键基础设施、公共部门）在技术能力之外，普遍看重**数据治理、合规与可审计性**。把这些挂进 portfolio 叙事，比纯刷分更能打动 hiring manager：
+英国雇主（尤其金融、关键基础设施、公共部门）在技术能力之外，普遍看重**数据治理、合规与可审计性**。把这些挂进项目叙事，比纯刷分更能打动 hiring manager：
 
 | 信号 | 含义 | 最适合挂的项目 |
 |---|---|---|
@@ -78,7 +78,7 @@
 
 > **核实状态图例**：✅ 已核实真实存在 ｜ 🔒 真实但需申请/填表获取 ｜ ⚠️ 需自行确认数据/代码是否已公开 ｜ ⭐ 强烈推荐（确定可得 + 广泛引用 + 参考资料多）
 >
-> **重要原则**：portfolio 优先选「招聘方认得 + 拿得到 + 有参考 notebook」的数据集，其次才追最新。落地前务必确认「论文存在 + 数据可下载 + 许可允许」三件事。
+> **重要原则**：项目优先选「招聘方认得 + 拿得到 + 有参考 notebook」的数据集，其次才追最新。落地前务必确认「论文存在 + 数据可下载 + 许可允许」三件事。
 
 ### 2.1 经典基础数据集（确定可得，仍广泛使用）
 
@@ -163,7 +163,7 @@
 
 **目标岗位**：ML Cyber Security Engineer、Network Security Data Scientist
 
-**核心叙事**：这个领域 portfolio 高度饱和，单纯刷 CICIoT2023 到 99% 没有差异化。本项目的卖点不是分类器本身，而是**揭穿并避免 benchmark 虚高**——数据泄漏、随机切分过于乐观、跨环境泛化崩塌，这正是资深从业者最常吐槽的痛点。
+**核心叙事**：这个领域的公开项目高度饱和，单纯刷 CICIoT2023 到 99% 没有差异化。本项目的卖点不是分类器本身，而是**揭穿并避免 benchmark 虚高**——数据泄漏、随机切分过于乐观、跨环境泛化崩塌，这正是资深从业者最常吐槽的痛点。
 
 **数据集**：
 - 主：**NetFlow 统一系列**（NF-UNSW-NB15-v2 / NF-ToN-IoT / NF-CSE-CIC-IDS2018）——天然支持 leave-one-dataset-out 跨数据集实验。
@@ -434,7 +434,7 @@ Transactions with GNNs and Explainable Subgraphs
 | 档位 | 周期 | 交付内容 | 仓库质量门槛 |
 |---|---|---|---|
 | **MVP** | 2-3 周 | README + 核心 baseline + 3-5 张关键图表 + 一句话结论 | README、requirements.txt、固定随机种子、results.csv |
-| **Portfolio-ready** | 4-6 周 | 可复现实验、错误/失败案例分析、评估指标完整、一个 demo | 加 data_card、model_card、threat_model、Makefile |
+| **Reference-grade** | 4-6 周 | 可复现实验、错误/失败案例分析、评估指标完整、一个 demo | 加 data_card、model_card、threat_model、Makefile |
 | **Research-grade** | +若干周 | drift 监控、GNN/时序图、LLM、在线部署 | 加 Dockerfile、CI、checksum；原始大数据不入库，只留下载说明 |
 
 各项目的 MVP 锚点（确保 2-3 周能出货）：
@@ -473,7 +473,7 @@ Elliptic++ EDA → 表格 baseline → GNN → 时序图 → 可解释子图。
 
 ### 6.1 每个 repo 的文件清单（按档位递增）
 
-| 文件 / 实践 | MVP | Portfolio-ready | Research-grade | 作用 |
+| 文件 / 实践 | MVP | Reference-grade | Research-grade | 作用 |
 |---|:---:|:---:|:---:|:---:|
 | `README.md`（问题、数据、方法、结果、复现命令） | ✓ | ✓ | ✓ | 入口与叙事 |
 | `requirements.txt` / `environment.yml` | ✓ | ✓ | ✓ | 环境可复现 |
@@ -495,14 +495,14 @@ Elliptic++ EDA → 表格 baseline → GNN → 时序图 → 可解释子图。
 - **不提交密钥/凭证**：API key 走环境变量；提供 `.env.example`。
 - **PII / 敏感样本**：恶意软件、攻击样本、含个人数据的日志按各自数据集要求处理，必要时脱敏，并在 README 说明。
 
-> 这一章不必在写计划时就全部落地——它是每个项目**升到 Portfolio-ready 档时的 checklist**，按需勾选即可。
+> 这一章不必在写计划时就全部落地——它是每个项目**升到 Reference-grade 档时的 checklist**，按需勾选即可。
 
 ---
 
-## 七、作品集（Portfolio）结构
+## 七、项目集结构
 
 ```
-cyber-ml-portfolio/
+cyber-ml-projects/
 │
 ├── 01-honest-nids/
 │   ├── notebooks/   (01_optimistic_baseline / 02_leakage_analysis /

@@ -21,6 +21,7 @@ identity shortcuts, and poor cross-dataset generalisation.
 | Related work and narrative angles | `reports/related-work-perspectives.md` |
 | Model choice decision | `reports/model-selection-decision.md` |
 | Notebook order and test commands | `notebooks/README.md` |
+| Network-depth candidate backlog | `../docs/network-detection-candidates-draft.md` |
 
 ## Current High-Signal Decisions
 
@@ -36,6 +37,9 @@ identity shortcuts, and poor cross-dataset generalisation.
 6. Post-review wording boundary: keep LODO/PR-AUC as the main stress-test
    story, but do not overclaim FPR, threshold tuning, or model-invariant
    collapse beyond what the tables support.
+7. Network-depth backlog: add at most one extra network-depth project. Current
+   preferred candidate is BGP/RPKI honest audit, gated by a one-day data
+   feasibility spike; DNS honest-audit is the fallback.
 
 ## How To Add Memory
 

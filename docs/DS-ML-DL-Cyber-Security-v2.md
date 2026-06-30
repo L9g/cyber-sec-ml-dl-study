@@ -12,7 +12,7 @@
 
 | 岗位名称 | 侧重方向 | 本计划覆盖项目 |
 |---|---|---|
-| AI Security Architect | AI 系统安全设计与评估 | 项目二 |
+| AI Security Architect | AI 系统安全设计与评估；ML integrity / poisoning / provenance | 项目二（主）+ 项目一/四 integrity 线（见 §三.0 签名） |
 | Machine Learning Security Engineer | ML 驱动的威胁检测系统 | 项目一、三 |
 | AI / Cyber Threat Detection Engineer | 自动化威胁检测 | 项目一、三 |
 | Security Data Scientist | 安全数据分析与建模 | 项目一、四 |
@@ -159,6 +159,20 @@
 >
 > **跨项目加分项（不单列）**：至少在一个项目里加入 concept drift 监控（数据按时间分片，观察模型性能衰减），并为 1-2 个项目做 Streamlit / Hugging Face Space 在线 demo——recruiter 极吃 live demo。
 
+### 0. 贯穿四项目的签名：脏标签 / 漂移 / 投毒下的可信度（2026-06-30 重框）
+
+> 这是把四个项目从「四个孤岛 + 方法论可迁移」升级成**一个论点**的主线。原签名「诚实评估」太窄，只覆盖项目一的泄漏/切分；真正贯穿全部的更硬主线是：**当标签脏、只在被调查过的样本上有标签（选择性标注）、分布随时间漂移、且输入/标签可被对手投毒时，模型还可信吗？** 这正是 AI Security / Model Risk 岗（如 MI6 AI Security Architect 要的 ML integrity / poisoning / provenance / misuse）逐字想听的故事。
+
+| 威胁面 | 在四项目里的落点 |
+|---|---|
+| **特征泄漏 + 跨分布崩塌** | 项目一（IP/重复流泄漏、LODO 跨数据集、真 temporal split） |
+| **标签来源泄漏（label provenance）** | 项目四（AML 选择性标注 / 核实延迟 / 暗市关停漂移）—— honest-nids 从「特征泄漏」到「标签泄漏」的升级 |
+| **对抗输入完整性** | 项目二（prompt injection：把不可信数据当系统指令） |
+| **数据/模型投毒** | 项目二（HackAPrompt 对抗料）+ 可选对抗 ML 扩展（EMBER evasion）+ 路由安全 backlog（公开 BGP monitor 可投毒） |
+| **操作点脆弱性（阈值/采样/预算下指标漂移）** | 全部——用曲线（PR-AUC、coverage-vs-abstention）不用单点 accuracy |
+
+**定位后果（影响投递排序）**：把签名定义成「可信度」而非窄义「诚实评估」后，**AI Security / Model Risk 池从第三升到与 cyber 并列第二**——因为项目二天然在此，项目一/四的 integrity 线也落在此，三个项目共同支撑这条线，比单一 LLM 项目更有说服力。对外报告（每个 README/narrative）都应显式挂这条主线，而不是各讲各的分数。
+
 ### 项目一：诚实评估的网络入侵检测（NIDS）
 
 **目标岗位**：ML Cyber Security Engineer、Network Security Data Scientist
@@ -304,6 +318,12 @@ Utility-Security Trade-offs on AgentDojo and AgentDyn
 - **Bonus validation（新颖性加分）**：Multi-Source Logs 2026、OpenSOC-AI 2026——⚠️ 它们很新（OpenSOC-AI 实验仅 450 train / 50 holdout），只作锦上添花，不作主依赖。
 
 > v2.1 调整（采纳第 5 条反馈）：把原来 5 层的庞大设计拆成**一主线 + 一图子模块 + 一加分**，避免范围失控，也更贴近 Detection Engineer / Cyber Analytics Engineer 的预期。**LLM 只做解释层，不作核心检测器。**
+>
+> **🔻 2026-06-30 范围正式收敛（避免 sprawl，与四项目深度分层一致，见 §五.0a）**：项目三定位为**小 MVP / 关键词补位**，不是第四个深项目——它在组合里的唯一不可替代角色是补 **SOC / SIEM / ATT&CK / Sigma / detection-engineering** 关键词（honest-nids、AML 都给不出）。据此：
+> - **MVP 核心（唯一必做）= 单层告警富化**：日志标准化 → Sigma baseline → LightGBM 富化分类（threat class / technique / severity）→ ATT&CK 两级映射 → 结构化告警输出 + **alert reduction 曲线**。
+> - **图子模块（横向移动）= 可选扩展**：GNN 主证据放项目四；此处复用其图代码作「图方法跨域（身份图≠交易图）」证据，**时间紧可不做**。
+> - **LLM 解释层 = 砍 / 最后再说**：与项目二 LLM 重叠，仅投 LLM-SOC 岗时才补。
+> - 执行序排**最后（Phase 4）**，优先级低于 honest-nids 封板与 AML 旗舰。
 
 #### 主项目：SIEM Alert Enrichment Pipeline
 
@@ -321,13 +341,15 @@ Utility-Security Trade-offs on AgentDojo and AgentDyn
 4. **SOC 输出**：上述结构化告警字段。
 5. **评价**：threat accuracy、ATT&CK mapping F1（tactic+technique 两级）、severity accuracy、FP rate、alert reduction rate。
 
-#### 子模块：Graph Lateral Movement Detection
+#### 子模块（可选扩展，非 MVP）：Graph Lateral Movement Detection
 - 用 LANL 认证日志构建「用户-主机认证图」，做异常路径 / 社区 / GNN 节点分类检测横向移动。
 - 评价：恶意认证边/路径的 precision/recall；与规则基线对比。
+- **定位**：复用项目四的图代码，作「图方法跨域（身份图 ≠ 交易图）」证据；GNN 主证据在项目四，**时间紧时跳过不影响 MVP**。
 
-#### 加分：LLM 解释层
+#### 加分（砍 / 最后再说，非 MVP）：LLM 解释层
 - 用 OpenSOC-AI（TinyLlama+LoRA）风格对告警生成自然语言解释，**仅辅助 analyst，不替代检测**。
 - ⚠️ 评估陷阱：严格 regex parser 会把 LLM 评成 0%，需用 fuzzy parser（见 [arXiv:2605.07293](https://arxiv.org/abs/2605.07293)）。
+- **定位**：与项目二 LLM 工作重叠，仅在投 LLM-SOC 岗位时才补；否则不做。
 
 #### 参考资源
 
@@ -372,13 +394,15 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 4. **图模型**：GCN / GraphSAGE / GAT；对比「加了图结构」相比表格 baseline 的提升。
 5. **时序图**：EvolveGCN 等，利用时间步演化。
 6. **不平衡 + 半监督**：focal loss / 重采样；利用大量未标注节点。
-7. **可解释性**：GNNExplainer / 子图重要性——向反洗钱合规团队解释「为什么这笔交易可疑」。
+7. **标签来源审计（label provenance —— 本项目相对项目一最强的方法学增量）**：AML 标签的本质缺陷比 NIDS 严重——**只在「被调查过的告警」上有标签（selective labeling / 核实延迟），未标注 ≠ 良性**；且 Elliptic 有暗市关停后跨时段分布漂移（⚠️ 此漂移现象待进库前二次核实）。据此审计：① 标注是否选择性偏差；② 同一地址/实体是否跨 split 泄漏（应按实体/时间 group split，呼应项目一重复流泄漏）；③ illicit 标签时间一致性。输出一份**标签可信度分级**，喂回下条的 abstain 逻辑。这把 honest-nids 的「特征泄漏」签名升级到「标签泄漏」。
+8. **可解释分诊输出（AML Decision Card —— 给调查员，不止给指标）**：每条 top alert 输出一张卡：交易/地址 + 图证据子图（GNNExplainer）+ 实体关系 + 模型分数 + **校准后置信度** + 决策（escalate / clear / **investigate**，不确定主动 abstain 到 investigate）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 真正做的「给分析师的 case 分诊 + 可解释」，而非 Elliptic 上刷 AUC。此卡片与路由安全 backlog 的 RPKI Decision Card 同一模具（见 `network-detection-candidates-draft.md` §6），建一次复用。
 
 #### 评价指标（按真实 AML 工作方式，而非单纯 GNN F1）
 - **precision@k / recall@k**：AML 团队按调查容量处理 top alerts，整体 F1 不如「前 k 个告警里有多少真命中」有意义。
 - **Human review budget**：设定「每天只能调查 top 100 alerts」的约束，报告在该预算下的命中率与漏报——直接对应合规团队的实际产能。
 - **illicit 类 precision/recall/F1、PR-AUC**：强调 recall（漏报洗钱代价高）。
 - **False positive case study**：挑几个「模型判可疑但可能合法」的案例，解释为什么会误判、analyst 该如何复核——这比任何分数都更像真实金融犯罪检测工作。
+- **coverage @ abstention 曲线**：给定弃权率，自动决策覆盖多少、剩多少进 investigate 队列。⚠️ precision@k / recall@k / review-budget 命中率都是**操作点指标**，随阈值/采样漂移（项目一 §2.1 已证 recall@0.5 不稳）——**报曲线不报单点**，阈值无关的 PR-AUC 留作模型对比骨架。
 
 #### 参考资源
 
@@ -444,6 +468,19 @@ Transactions with GNNs and Explainable Subgraphs
 - 项目四 MVP：**纯表格 LightGBM**(不碰 GNN),建立 AML 非图基线——因此项目四可安全提前到 Phase 2-3,不会被图学习卡住。
 
 > 注：完整的「统一仓库质量标准」（每个 repo 必备文件清单、按档位递增的门槛）见**第六章**。
+
+### 5.0a 四项目的深度分层（2026-06-30 收敛：收敛的是「投入」不是「数量」）
+
+> 原则：**先全推到 MVP（§5.0），再按下表分配升档投入**——不是四个都堆到同等深度。求职上「2 个深旗舰 + 1 精悍钩子 + 1 关键词补位」比「4 个半成品」更经得起深度面试。重叠信号去重：图的主证据在项目四、LLM 的主证据在项目二，其余项目对应层只标「复用、非原创深挖」。
+
+| 项目 | 角色 | 目标档位 | 在组合里的不可替代信号 | 去重说明 |
+|---|---|---|---|---|
+| **① honest-nids** | 旗舰 | Reference→Research | 泄漏/跨分布崩塌/诚实评估**签名**；先封板（含受众分层报告）再开新项目 | — |
+| **④ AML-GNN** | 旗舰 | Reference→Research | 金融/AML（伦敦命中率最高）+ 图 + label-provenance + Decision Card | **图 + Decision Card 主证据在此** |
+| **② LLM 注入** | 钩子 | MVP+ | AI-security / agent 安全 / 对抗输入完整性 | **LLM 安全主证据在此** |
+| **③ SIEM** | 关键词补位 | 单层小 MVP | SOC/SIEM/ATT&CK/Sigma/detection-engineering 关键词（①④给不出） | 图层/LLM 层复用①②④，标可选 |
+
+> ⚠️ 何时真砍项目三：仅当目标 JD 完全不含「Detection Engineer / SOC / ATT&CK」时，才把项目三整体降为 backlog；否则保留其单层 MVP 以保关键词命中（撤回了早前「直接砍 SIEM」的提法，理由见决策记录）。
 
 ### Phase 1：诚实评估 NIDS（项目一）
 EDA → 乐观 baseline → 暴露泄漏 → 诚实重做（temporal split）→ 跨数据集 LODO → SHAP → drift 曲线。
@@ -596,13 +633,16 @@ and LLM-assisted triage with MITRE ATT&CK mapping and severity scoring.
 
 **最终目标**：展示「能把 ML/DL/LLM/GNN 放进真实 cyber defence 与金融风控流程」的工程能力，而非「模型 accuracy 很高」的 Kaggle 分数。
 
+**统一签名（见 §三.0）**：四项目共享一条主线——**脏标签 / 选择性标注 / 分布漂移 / 投毒下的可信度**。这不只是「诚实评估」，是直接命中 AI Security / Model Risk 岗的 integrity / poisoning / provenance 关切，也让该岗位池升到与 cyber 并列第二。
+
 核心叙事：
 ```
 理解真实安全/金融犯罪场景
 → 选择适合的 ML/DL/LLM/GNN 方法
 → 构建完整检测/防御/合规 pipeline
-→ 诚实评估 utility、security、false positive、泛化与 operational trade-off
-→ 产出可解释、可部署的安全 AI 系统
+→ 在脏标签 / 选择性标注 / 漂移 / 投毒下诚实评估可信度
+  （utility、security、泛化、operating-point 脆弱性——报曲线不报单点）
+→ 产出可解释、可部署、可分诊（Decision Card）的安全 AI 系统
 ```
 
 ---

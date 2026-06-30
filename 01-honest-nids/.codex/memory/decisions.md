@@ -105,3 +105,40 @@ read every deliverable as a genuine technical project, not a job-hunt artifact.
   job-hunt words in the planning docs were left untouched unless asked.)
 - One identifier kept on purpose: the auto-memory slug
   `project-cyber-ml-portfolio` (a pointer, not prose).
+
+## 2026-06-30 — Network-Depth Candidate Selection
+
+Decision: treat `docs/network-detection-candidates-draft.md` as a backlog and
+select at most one extra network-depth project. The current preferred candidate
+is **BGP/RPKI**, not Zeek or DNS.
+
+Reasoning:
+
+- Zeek/ATT&CK and insider-threat graph work overlap the planned SIEM/SOC
+  project and should be implementation choices there, not separate projects.
+- DNS is practical but less distinctive unless framed as an honest benchmark
+  audit with family/tool/time holdout and alert-budget evaluation.
+- BGP/RPKI gives the strongest scarce signal for IP networking depth while
+  preserving the existing honest-evaluation signature from `01-honest-nids`.
+- The BGP project should be one staged track:
+  - MVP: honest audit of an RPKI-conflict classifier, using PR-AUC relative to
+    realistic base rate, leakage/label-provenance checks, and
+    `block / allow / investigate` triage with explicit abstention.
+  - Research-grade: control-plane plus data-plane fusion, motivated by the
+    weakness of relying only on public BGP monitors and by delay/reachability
+    or traffic-change signals.
+- Do not overclaim the BGP idea until the source papers are read carefully.
+  In particular, `arXiv:2507.20434` should be cited as a poisoning/evasion
+  critique of public-control-plane detectors, not as a temporal-collapse paper.
+
+Execution gate:
+
+- Before committing to BGP-first, run a one-day data feasibility spike:
+  1. obtain RPKI-invalid routes from RouteViews or RIPE RIS plus Routinator;
+  2. join at least core features such as CAIDA AS relationship, IHR
+     AS-hegemony, IRR, or GeoIP;
+  3. identify a viable event/label source such as BGPStream or Qrator Radar;
+  4. read the `arXiv:2502.03378` PDF to verify the claimed experimental flaws
+     before building a "debunking" narrative.
+- If the spike fails, fall back to DNS honest-audit rather than expanding the
+  candidate pool.

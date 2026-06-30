@@ -62,6 +62,25 @@ On 2026-06-30, `pytest 01-honest-nids/notebooks --collect-only -q` still
 collected 0 tests because notebook filenames start with digits. This is expected
 and already documented; invoke notebook files explicitly.
 
+## Network-Depth Backlog Context
+
+On 2026-06-30, `docs/network-detection-candidates-draft.md` was reviewed as a
+candidate pool, not a replacement for the main four-project plan. The current
+stable interpretation is:
+
+- The main plan remains: Honest NIDS, LLM injection defence, SIEM/SOC, and
+  AML-GNN. AML-GNN remains higher priority than any extra network-depth item.
+- The candidate pool should add at most one network-depth project, not a stack
+  of Zeek, DNS, BGP, TLS, VPC, and IoT projects.
+- The preferred network-depth candidate is now a BGP/RPKI single track:
+  **RPKI-conflict honest audit as MVP, control-plane plus data-plane fusion as
+  Research-grade extension**.
+- Zeek/ATT&CK and insider/lateral-movement ideas are implementation choices for
+  the SIEM/SOC project, not separate projects.
+- DNS remains the fallback if the BGP data-feasibility spike fails, but only in
+  an honest-audit form: family/tool/time holdout, host aggregation, leakage
+  checks, and alert-budget evaluation.
+
 ## Known Cleanup Items
 
 - Keep README results synced with `reports/findings.md`.

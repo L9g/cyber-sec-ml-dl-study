@@ -15,7 +15,7 @@ def _(mo):
     mo.md(r"""
     # 04 · LODO 跨数据集泛化矩阵 —— 真正的诚实落差
 
-    > **本系列：01 故意踩坑 → 03 诚实单数据集 → 04（本文）跨数据集泛化测试**
+    > **本系列：01 故意踩坑 → 02 IP 泄漏机制 → 03 诚实单数据集 → 04（本文）跨数据集泛化测试**
 
     ---
 
@@ -116,7 +116,8 @@ def _(dfs, fe, pd):
     def prep(df):
         extra = [c for c in ["Attack", "Dataset"] if c in df.columns]
         work = df.drop(columns=extra)
-        work = fe.drop_leakage_features(work)
+        # 删 IP/端口（身份/环境特征）+ 绝对时间戳（编码采集时段，不可跨数据集迁移）
+        work = fe.drop_leakage_features(work, extra=fe.NETFLOW_ABSOLUTE_TIMESTAMP_FEATURES)
         for col in work.select_dtypes(include="object").columns:
             if col != "Label":
                 work[col] = pd.factorize(work[col])[0]
@@ -126,8 +127,8 @@ def _(dfs, fe, pd):
     feat_sets = [set(v.columns) - {"Label"} for v in prepped.values()]
     shared_feats = sorted(set.intersection(*feat_sets))
     all_same = all(s == feat_sets[0] for s in feat_sets)
-    print(f"去泄漏后特征数: {len(shared_feats)}  |  三数据集特征集一致: {all_same}")
-    print("（三个数据集都来自 NetFlow-v2 统一特征体系，特征列应完全相同）")
+    print(f"去泄漏后特征数（去 IP/端口 + 去绝对时间戳）: {len(shared_feats)}  |  三数据集特征集一致: {all_same}")
+    print("（三个数据集都来自 NetFlow-v3 统一特征体系，特征列应完全相同）")
 
     prepped, shared_feats
     return prepped, shared_feats
@@ -241,16 +242,16 @@ def _(DS_FILES, lodo_df, pd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 关键发现：attack_recall 断崖 + 半数 PR-AUC 在随机基线及以下
+    ## 关键发现：跨数据集 PR-AUC 量级崩塌（recall 已降级）
 
-    最干净的信号是 **attack_recall**：单数据集内 = 1.000，6 对跨数据集**全部 ≤ 0.031**（多对 ≈ 0）——
-    一个在 UNSW 上 100% 检出攻击的模型，换个数据集几乎一个攻击都抓不到。macro-F1 也全面跌到 0.38–0.49。
+    **稳健头条 = 量级落差**：分布内 PR-AUC/macro-F1 ≈ 1.0（§1，合成数据平凡可分）；6 对跨数据集
+    PR-AUC 全部远离 1.0、崩向各自测试集的随机基线（=攻击占比，[[feedback-pr-auc-imbalanced]]）——
+    尤其测低基率集（UNSW，基线 0.054）时全部贴/低于随机。macro-F1 也全面跌到 0.38–0.49（≈二分类随机）。
 
-    **PR-AUC 比 macro-F1 更诚实**：对不平衡数据，PR-AUC 的随机基线不是 0.5，
-    而是**测试集的正样本（攻击）占比**（[[feedback-pr-auc-imbalanced]]）。
-    下表直接对比实测 PR-AUC 与该测试集的随机基线——**3/6 在随机基线及以下**
-    （含 1 对几乎等于随机）。注意即便少数方向 PR-AUC 高于随机（如 CSE→ToN 0.79），recall 仍只有 3%：
-    排序略有信号 ≠ 操作点可用。
+    > ⚠️ **指标降级（与 `reports/findings.md` §2.1 一致）**：旧版以「attack_recall 断崖 ≤3%」为头条。
+    > 训练量敏感性审计证明 recall@0.5 **采样脆弱**（固定 1M 换 seed 即摆 8×）、且其崩塌**非阈值刀刃**
+    > （攻击流概率被自信压到 0.4 以下，调阈值救不回）；「N/6 低于随机」这个二元计数也随训练量翻转。
+    > 故下表 recall / Δ / 「是否低于随机」三列仅作**观察**，**卖点改押 PR-AUC 量级落差**，不押精确计数。
     """)
     return
 
@@ -282,70 +283,87 @@ def _(dfs, lodo_df, pd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    **3/6 的 PR-AUC 在随机基线及以下，且 6/6 的 attack_recall ≤ 3%。**
-    模型在外部数据集上几乎检不出攻击；半数情况下连排序能力都不比瞎猜强。
+    **没有任何跨集对的 PR-AUC 接近分布内 ~1.0（实测 max≈0.79），6 对均值≈0.30，崩向随机。**
+    模型在外部数据集上检测能力大幅退化；卖点是这个**量级落差**，不是某个固定阈值下的 recall 数字。
 
     ---
 
-    ## 为什么会这样？—— 阈值/基率偏移 + 特征分布漂移
+    ## 为什么会这样？—— 特征分布漂移为主，基率/阈值偏移为辅
 
-    一部分来自攻击占比差异（模型把训练集基率当先验）：
-
-    | 训练→测试（攻击率） | 效果 |
-    |---|---|
-    | **UNSW 5.4% → ToN-IoT 39.0%** | 阈值太保守，attack_recall=0.0002，几乎全部攻击被判良性 |
-    | **CSE-CIC 12.9% → UNSW 5.4%** | 阈值偏激进，FPR=0.023（6 对里最高），但仍只抓到 0.9% 攻击 |
-
-    但 v3 上更主要的是**特征分布漂移**：即便阈值合适，跨数据集的流统计分布也不同——
-    所以 recall 普遍崩到 ≈0，而不只是阈值问题。模型学到的是「这个网络/这套合成工具的指纹」，
-    不是可迁移的攻击特征。这是 Arp P9（lab-only evaluation）的核心机制：
-    同分布测试集上的「完美」不能预测真实部署表现。
+    主因是**特征分布漂移**：跨数据集的流统计分布不同，模型学到的是「这个网络/这套合成工具的指纹」，
+    不是可迁移的攻击特征（Arp P9 lab-only：同分布的「完美」不预测真实部署）。
+    基率/阈值偏移是**次因**——§2.1 审计显示 recall 崩塌时攻击流概率被**自信压到 0.4 以下**（非堆在 0.49），
+    说明不是单纯「阈值太保守」、调阈值救不回，而是分布漂移下评分的整体重组。
 
     ---
 
     ## 与 notebook 03 的结论如何衔接
 
-    - notebook 03 结论：单数据集内，去 IP/端口 + 真 temporal split 后诚实 baseline 仍**满分**（PR-AUC≈1.0、recall=1.0）。
-    - notebook 04 结论：换一个数据集，attack_recall 崩到 ≤3%，3/6 的 PR-AUC 在随机基线及以下。
+    - notebook 03：单数据集内，去 IP/端口 + 真 temporal split 后诚实 baseline 仍**满分**（PR-AUC≈1.0）。
+    - notebook 04：换一个数据集，PR-AUC 崩向随机基线、macro-F1 跌到 ≈0.4；且（§2.2 P6）**四个模型族一起崩**。
 
-    这两个结论**不矛盾**。它们共同说明：单数据集的满分是合成数据的可分性，不是检测能力的证明。
-    这正是本项目的诚实论点——**我们刻意暴露了实验室数字与真实部署之间的断层**。
+    两者**不矛盾**：单数据集满分是合成数据的可分性（连单特征 stump 都 ≈1.0，§2.2），不是检测能力的证明。
+    这正是本项目的诚实论点——**刻意暴露实验室数字与真实部署之间的断层**。
 
     ---
 
     ## 对实践的启示
 
-    1. **单一数据集的结果不可外推**：发论文时要做 LODO（或至少报告多数据集结果）。
-    2. **报告 PR-AUC 要同时给出随机基线**：让读者能判断数字是否有实际意义。
-    3. **攻击率是分布外泛化的最大障碍之一**：真实部署需要考虑目标网络的攻击率，
-       而不是直接使用实验室调好的阈值。
-    4. **class_weight 不解决跨数据集问题**：它调整阈值，但不能改变特征空间的分布漂移。
+    1. **单一数据集的结果不可外推**：发论文要做 LODO（或至少报告多数据集结果）。
+    2. **不平衡数据优先阈值无关 + rank-based 指标（PR-AUC）并给随机基线**：操作点指标（recall@固定阈值）
+       在评分稀疏区采样脆弱（§2.1），不可作头条；连 PR-AUC 自己贴基线处也会抖，需诚实标注。
+    3. **加模型容量救不回**：换 LogReg/MLP/单特征 stump 一起崩（§2.2），失败根因是评估/数据不是模型。
+    4. **class_weight 不解决跨数据集问题**：它调阈值，但改变不了特征空间的分布漂移。
     """)
     return
 
 
 @app.cell
 def _(lodo_df):
-    def test_cross_dataset_recall_collapses():
-        # 叙事回归（方向性）：同分布 attack_recall≈1.0（§1），跨数据集应崩塌。
-        # 参考锚点是结构性的 ~1.0（合成数据完美可分，对种子鲁棒），故 <0.2 = 不足同分布的 1/5。
-        assert lodo_df["minority_recall"].max() < 0.2
+    # 叙事回归（方向性，margin-vs-noise）——断言只押**稳健信号 = 分布内→跨集的量级落差**。
+    # 锚点：分布内 macro-F1/PR-AUC ≈ 1.0（§1，结构性、对种子鲁棒）。
+    # ⚠️ 刻意**不**对 recall@0.5 与「N/6 低于随机」计数设断言：§2.1 训练量敏感性审计证明二者
+    #    采样脆弱（固定 1M 换 seed，recall 摆 8×；below-random 二元判定随训练量翻转），
+    #    押它们会随 LightGBM 版本/种子漂移而误报。recall 仅作打印观察（上面表格），不进 CI 闸门。
 
-    def test_cross_dataset_macro_f1_collapses():
-        # 同分布 macro-F1≈1.0；跨数据集应跌向二分类随机水平(~0.5)。<0.7 落在随机与满分之间，
-        # 远低于结构性 ~1.0 的同分布参考，margin 充足。
-        assert lodo_df["macro_f1"].max() < 0.7
+    def test_macro_f1_collapses_from_indist():
+        # 分布内≈1.0 → 跨集应跌向随机(~0.5)。<0.75 既远低于 1.0 锚点、又高于实测 max(~0.49)，双向 margin 足。
+        assert lodo_df["macro_f1"].max() < 0.75
+
+    def test_pr_auc_magnitude_collapses():
+        # 稳健头条（量级，非计数）：没有任何跨集对的 PR-AUC 接近分布内 ~1.0（实测 max≈0.79，CSE→ToN）；
+        # 且 6 对均值远低于 1.0（实测≈0.30）。两条都对种子/版本鲁棒。
+        assert lodo_df["pr_auc"].max() < 0.9
+        assert lodo_df["pr_auc"].mean() < 0.6
+
+    def test_to_low_base_rate_target_pr_auc_near_random():
+        # 测低基率集（UNSW，基线 0.054）时 PR-AUC 崩到随机附近——方向稳健（vs 分布内 1.0，margin 极大）。
+        to_unsw = lodo_df.loc[lodo_df["test"] == "UNSW", "pr_auc"]
+        assert to_unsw.max() < 0.2
     return
 
 
 @app.cell
-def _(dfs, lodo_df):
-    def test_at_least_one_pr_auc_below_random():
-        # 核心卖点：存在 train→test 对的 PR-AUC 低于该测试集随机基线(=攻击占比)。
-        # 用 >=1（最稳的 ToN→UNSW 实测 Δ≈-0.024）；findings.md 报告的 3/6 是更强但更易漂移的陈述。
-        baselines = {k: float(v["Label"].mean()) for k, v in dfs.items()}
-        below = sum(r["pr_auc"] < baselines[r["test"]] for _, r in lodo_df.iterrows())
-        assert below >= 1
+def _(EXPERIMENTS_CSV):
+    def test_p6_collapse_is_model_invariant():
+        # §2.2 P6 / Layeghy A2：崩塌跨模型族成立。对 scripts/run_model_scan.py 的产物做方向性回归。
+        # 路径用 EXPERIMENTS_CSV.parent（=RESULTS_DIR，config.py 的 __file__ 锚定）——
+        # ⚠️ 不用 mo.notebook_dir()：它在 pytest 下退化为 CWD，会把 results/ 指错（见 skill
+        # anchor-paths-to-file-not-cwd）。注意 P6 用 **PR-AUC 均值**而非 macro-F1——后者在高基率目标上
+        # 被简单模型的高 FPR 冲高（stump 跨集 macro-F1 可达 0.83），非模型不变；PR-AUC 才稳。
+        import pandas as pd
+        import pytest
+
+        p = EXPERIMENTS_CSV.parent / "model_scan.csv"
+        if not p.exists():
+            pytest.skip("先跑 scripts/run_model_scan.py 生成 results/model_scan.csv")
+        s = pd.read_csv(p)
+        ind_unsw = s[(s["mode"] == "indist") & (s["train"] == "UNSW")]
+        lodo = s[s["mode"] == "lodo"]
+        # ① 分布内 UNSW：每个模型族都≈满分（连单特征 stump 0.998）——benchmark 平凡可分
+        assert ind_unsw["macro_f1"].min() > 0.9
+        # ② 跨数据集：没有任何模型族的 6 对 PR-AUC 均值接近其分布内 ~1.0（实测各模型≈0.25–0.31）
+        assert lodo.groupby("model")["pr_auc"].mean().max() < 0.6
     return
 
 

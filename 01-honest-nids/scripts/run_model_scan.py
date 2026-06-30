@@ -92,7 +92,7 @@ def main() -> None:
         baselines[key] = float(df["Label"].mean())
         print(f"  {key}: {len(df):>9,} 行, attack%={baselines[key]:.4f}")
 
-    feat_sets = [set(v.columns) - {"Label", TIME_COL, END_TS} for v in prepped.values()]
+    feat_sets = [set(v.columns) - {"Label"} - set(fe.NETFLOW_ABSOLUTE_TIMESTAMP_FEATURES) for v in prepped.values()]
     shared_feats = sorted(set.intersection(*feat_sets))
     assert all(s == feat_sets[0] for s in feat_sets), "v3 三数据集特征集应一致"
     print(f"  共享特征数（去 IP/端口 + 去绝对时间戳后）: {len(shared_feats)}")

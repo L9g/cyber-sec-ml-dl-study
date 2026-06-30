@@ -3,19 +3,28 @@
 把每个特征分到一个 policy，落地为 feature_policy_matrix.csv（见阅读清单 §6）。
 对应 Arp 陷阱 P3 (data snooping) / P4 (spurious correlations)。
 
-针对 NetFlow-v2 统一系列（`sarhan2021standardfeature`）的列名。
+针对 NetFlow-v3 统一系列（`sarhan2021standardfeature` 扩展到 53 特征）的列名。
 """
 from __future__ import annotations
 
 import pandas as pd
 
-# NetFlow-v2 里直接编码「身份/环境」的列——跨数据集不可迁移，且常成捷径或直接泄漏。
+# NetFlow-v3 里直接编码「身份/环境」的列——跨数据集不可迁移，且常成捷径或直接泄漏。
 # 诚实版必须在 Step 2 移除它们，只保留可泛化的 flow 统计特征。
 NETFLOW_IDENTITY_FEATURES = [
     "IPV4_SRC_ADDR",
     "IPV4_DST_ADDR",
     "L4_SRC_PORT",
     "L4_DST_PORT",
+]
+
+# v3 新增的绝对时间戳——编码的是「哪个数据集、哪段时间采集」，不是流量本身的行为。
+# 跨数据集训练/测试时不可迁移（各数据集时间范围不重叠），作为特征会引入环境标识泄漏。
+# ⚠️ 这两列在 temporal_split 里用于排序，排序后需从特征中剔除（temporal_split 内部已处理）；
+#    LODO / model_scan 里不做 temporal split，应在 prep() 时通过 extra 参数一并删除。
+NETFLOW_ABSOLUTE_TIMESTAMP_FEATURES = [
+    "FLOW_START_MILLISECONDS",
+    "FLOW_END_MILLISECONDS",
 ]
 
 # 标签列（不同发行版命名略有差异，加载后统一）。

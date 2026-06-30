@@ -48,7 +48,17 @@
 
 ---
 
+## 5. ✅ `mo.notebook_dir()` 在 pytest 下退化为 CWD → 静默 skip
+
+**判断**：marimo 笔记本里用 `mo.notebook_dir()` 拼相对路径，在 `marimo run/edit` 下对，但 **`pytest nb.py` 下它返回 CWD**（不是笔记本文件所在目录）。nb04 的 P6 测试 `mo.notebook_dir().parent/"results"/...` 因此把 `results/` 指到工作区根、文件找不到，`pytest.skip` → **测试静默没跑，却显示绿**。
+
+**为什么**：pytest 不经 marimo 运行时执行 cell，`notebook_dir()` 拿不到笔记本上下文，回退到进程 CWD。`.parent` 再叠加，路径整体偏移一层。
+
+**复盘注意点**：① **`N passed, 1 skipped` 要追问 skip 的是谁**——一个"路径找不到就 skip"的回归测试，skip = 没在守护，和没写一样，但 exit code 仍 0（呼应 #3「绿不等于真跑」）。② 修法 A（cell 内路径）= 锚定到**文件**不锚定 CWD（skill `anchor-paths-to-file-not-cwd`）：用 `config.py` 的 `Path(__file__).resolve().parent` 派生的常量（本项目 `EXPERIMENTS_CSV.parent`=`RESULTS_DIR`），pytest 下可靠。③ **修法 B（更根本，2026-06-29 确认）**：在 `notebooks/conftest.py` 里做 `sys.path.insert(0, Path(__file__).parent.parent)`——pytest 加载 conftest 早于收集测试，路径设置对所有 notebook 生效，不再依赖 `mo.notebook_dir()`。同时修复了「import cell 本身就因 `mo.notebook_dir().parent` 指向 workspace root 而找不到 `config`」这个更基础的 bug。见 skill `marimo-pytest-conftest`。④ 通用：测试里凡是"缺文件就 skip"的守卫，务必验证它在 CI 里**真的没 skip**。
+
+---
+
 ## 一句话提炼
 
 - **#1 + #4**：警惕**单个数字**——崩塌要对照基线（#1），操作点指标在稀疏区是噪声（#4）。下任何相对/绝对断言前先问"相对什么、稳不稳"。
-- **#2 + #3**：**冒烟要看内容不只看 exit code**（#3 NaN、#2 报错都靠肉眼抓）；多模型"同一份数据"未必真同（#2）。
+- **#2 + #3 + #5**：**绿不等于真跑**——exit 0 / 全 passed 可能藏着 NaN（#3）、skip（#5）；冒烟看内容、追问 skip 是谁、路径锚定到文件不锚 CWD。

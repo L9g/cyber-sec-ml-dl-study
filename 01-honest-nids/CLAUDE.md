@@ -3,6 +3,13 @@
 继承工作区根 `../CLAUDE.md` 的通用约束。本文件只列项目一特定规则。
 卖点 = **揭穿并避免 NIDS benchmark 虚高**（数据泄漏 / 跨数据集泛化崩塌），不是分类器本身。
 
+## Codex 项目记忆
+- Codex 专用项目记忆在 `.codex/memory/`。新会话开始或做方法学决策前，先读：
+  `.codex/memory/index.md`、`.codex/memory/current-context.md`、`.codex/memory/decisions.md`。
+- 用户说“存记忆 / 保存上下文 / 把这个结论存进项目上下文”时，优先更新 `.codex/memory/`；
+  若内容面向 portfolio 读者，再同步到 `reports/*.md` 或 README 链接。
+- `.codex/memory/` 只存稳定项目事实、决策和待办；不要存原始数据、密钥、token、长篇论文摘录。
+
 ## 数据基座（NetFlow v3）
 - 主数据 = **NetFlow v3**（53 特征，含真 IP + 真时间戳 + 未去重）。工作文件是 `data/*-v3.parquet`，
   原始 CSV 在 `data/v3_raw/`。来源/溯源/去重核验全过程见 `reports/data-prep-v3.md`。**勿回退到 v2 镜像**（已删 IP、已去重）。

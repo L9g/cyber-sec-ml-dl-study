@@ -7,10 +7,18 @@
 
 ---
 
-## 当前档位：MVP 🚧
+## 当前档位：Portfolio-ready（LODO/IP 消融/多模型扫描已完成）
 
-MVP 锚点（2-3 周出货）：**随机切分 LightGBM baseline + 「乐观 vs 诚实」对比表**。
-本 README 的结果区会随实验填充。不在 MVP 阶段上 Docker / CI / Makefile（见主文档第五、六章三档原则）。
+| 步骤 | 内容 | 状态 |
+|---|---|---|
+| 1 乐观 baseline | 随机切分 + 全特征（含 IP）→ PR-AUC=1.0 | ✅ |
+| 2 诚实重做 | 真 temporal split + 去泄漏特征 → PR-AUC 仍 1.0（合成数据平凡可分） | ✅ |
+| 2.1 IP 泄漏消融 | IP-only 满分→跨域崩塌；OHE 封堵，delta=0.000 | ✅ |
+| 3 跨数据集 LODO | 3×3 矩阵 + 多模型扫描 + 训练量敏感性审计 | ✅ |
+| 4 可解释 (SHAP) | SHAP global + per-attack 类 | ⏳ Portfolio+ |
+| 5 漂移监控 | 性能随时间衰减曲线 | ⏳ Research |
+
+不在 Portfolio 阶段上 Docker / CI / Makefile（见主文档三档原则）。
 
 ---
 
@@ -19,65 +27,126 @@ MVP 锚点（2-3 周出货）：**随机切分 LightGBM baseline + 「乐观 vs 
 找攻击与一般 ML 任务本质不同——极低基率、误报代价高、缺真实标注、闭世界假设不成立（`sommer2010outside`）。
 因此**只看 accuracy 会严重误导**；这正是项目一要量化展示的（`arp2022dodonts` 的 10 大陷阱 → 见 `reports/findings.md`）。
 
+前置决策：主模型为何选择 LightGBM 见 `reports/model-selection-decision.md`。
+
+---
+
+## 结果（NetFlow v3，seed=42，LightGBM）
+
+> 完整数字、局限分析与 Arp 自查见 [`reports/findings.md`](reports/findings.md)。
+
+### ① 分布内满分 ≠ 检测能力
+
+NF-UNSW-NB15-v3 上，乐观（随机切分 + 含 IP）与诚实（真 temporal split + 去 IP/端口 + 去绝对时间戳，47 特征）**均满分**（PR-AUC=1.0，macro-F1=1.0）。落差为零不是「封堵没用」，而是更深的警讯：**合成数据集本身平凡可分**——连单特征决策树桩 macro-F1=0.998（Arp P6 / Layeghy 视角8）。满分来自数据集指纹，不是攻击本质。
+
+### ② 换一个数据集，PR-AUC 崩向随机基线
+
+| 训练 → 测试 | PR-AUC | 随机基线 | Δ |
+|---|---|---|---|
+| UNSW → ToN-IoT | 0.715 | 0.390 | +0.325 |
+| UNSW → CSE-CIC | 0.183 | 0.129 | +0.054 |
+| ToN-IoT → UNSW | 0.031 | 0.054 | **−0.023 ⚠️ 低于随机** |
+| ToN-IoT → CSE-CIC | 0.097 | 0.129 | **−0.032 ⚠️ 低于随机** |
+| CSE-CIC → UNSW | 0.050 | 0.054 | **−0.004 ⚠️ 低于随机** |
+| CSE-CIC → ToN-IoT | 0.429 | 0.390 | +0.039 |
+
+随机基线 = 测试集攻击占比（PR-AUC 特有，不是 0.5）。**四模型族**（stump / LogReg / MLP / LightGBM）在「测 UNSW」方向 PR-AUC 全落 0.03–0.11——崩塌由**测哪个数据集**决定，不由模型族（Layeghy 2024 A2）。
+
+**Portfolio 核心句**：分布内 PR-AUC=1.0 的 NIDS，换一个数据集可能低于随机基线，且换四个模型一起崩——说明高分源于合成 benchmark 特有指纹，而非攻击的可泛化本质（`arp2022dodonts` P9）。
+
+### ③ IP 泄漏：背诵不是检测；跨域是纯负债
+
+UNSW-v3 仅 40 个 src IP，100% label 纯度 → **IP-only 随机/temporal 切分 PR-AUC=1.0**（背诵 40 行查找表）；但 temporal split **堵不住** IP 泄漏（40 IP 跨时段都在）——「切分干净 ≠ 特征干净」。
+
+跨域对照：用 OHE(handle_unknown="ignore") 的 IP-only 模型，目标网络 IP 全部映射零向量，PR-AUC **恰好等于随机基线**（ToN=0.390，CSE=0.129，delta=0.000）。结论：IP 跨网络无任何可迁移信号，删 IP 在准确度（持平）、泛化（正收益）、隐私（消 PII）三维同时占优。
+
+---
+
 ## 数据集
 
 | 角色 | 数据集 | 说明 |
 |---|---|---|
 | 主 | **NetFlow v3 统一系列** NF-UNSW-NB15-v3 / NF-ToN-IoT-v3 / NF-CSE-CIC-IDS2018-v3 | 53 个统一 NetFlow 特征（arXiv 2503.04404），**含真 IP + 真时间戳 + 未去重**，天然支持 LODO；来源/核验见 `reports/data-prep-v3.md` |
-| 辅 | **修正版 CICIDS2017** | 用 Engelen/Lanvin 修正版，非原始 bug 版（`engelen2021troubleshooting`, `lanvin2023errors`） |
-| 扩展 | CICIoT2023 / CICIoMT2024 | IoT/医疗差异化场景 |
 
 > ⚠️ **不提交原始数据**（真 IP = PII）。下载说明 + checksum 见 `data/README.md` 与 `reports/data-prep-v3.md`。
 
-## 方法（6 步叙事）
-
-| 步骤 | 做什么 | 产物 | 档位 |
-|---|---|---|---|
-| 1 乐观 baseline | 随机切分 + 全特征 → 虚高 99% | optimistic 行 | MVP |
-| 2 诚实重做 | temporal split + 移除泄漏特征 | 乐观 vs 诚实对比表 | MVP |
-| 3 跨数据集 LODO | A 训 B 测，量化 F1 跌幅 | LODO 矩阵 | Portfolio |
-| 4 建模/不平衡 | LightGBM + class_weight/SMOTE；macro-F1/PR-AUC/per-class recall | 指标表 | MVP→Portfolio |
-| 5 可解释 | SHAP global + per-attack | SHAP 图 | Portfolio |
-| 6 漂移监控 | 性能随时间衰减曲线 | drift 曲线 | Research |
+---
 
 ## 仓库结构
 
 ```
 01-honest-nids/
-├── config.py              # SEED 与路径
-├── data/README.md         # 下载说明 + checksum（不含原始数据）
+├── config.py                    # SEED=42 与路径
+├── requirements.txt
+├── data/
+│   ├── README.md                # 下载说明 + SHA-256（不含原始数据）
+│   └── checksums.sha256
 ├── src/
-│   ├── data.py            # 加载 + temporal split
-│   ├── feature_engineering.py  # 特征泄漏/捷径策略
-│   └── evaluation.py      # 诚实指标 + base-rate 误报量 + 实验落盘
-├── notebooks/             # 01_optimistic … 06_drift（见 notebooks/README.md）
-├── reports/findings.md    # 乐观 vs 诚实 / LODO / base-rate 表
-└── results/experiments.csv
+│   ├── data.py                  # 加载 + temporal split（duckdb 分层采样）
+│   ├── feature_engineering.py  # 泄漏特征策略（Arp P3/P4）
+│   ├── evaluation.py            # 诚实指标 + base-rate 误报量 + upsert 落盘
+│   ├── models.py                # build_models()（stump/LogReg/MLP/LightGBM）
+│   └── tests/                   # 代码契约单测（17 tests，~1s）
+├── notebooks/
+│   ├── conftest.py              # pytest 下修复 mo.notebook_dir() 退化
+│   ├── 01_optimistic_baseline.py
+│   ├── 02_ip_ablation.py        # IP-only 消融 + OHE 对照
+│   ├── 03_honest_temporal_split.py
+│   └── 04_lodo_cross_dataset.py
+├── scripts/
+│   ├── run_lodo.py              # LODO 3×3 矩阵
+│   ├── run_model_scan.py        # 多模型扫描（Arp P6）
+│   ├── run_size_audit.py        # 训练量敏感性审计（§2.1）
+│   └── run_ip_ablation.py       # IP 消融脚本版（含稳定性检验）
+├── reports/
+│   ├── findings.md              # 三张表 + 局限分析（项目主文档）
+│   ├── data-prep-v3.md          # 数据下载/去重/溯源全过程
+│   └── related-work-perspectives.md
+└── results/
+    ├── experiments.csv          # §1/§3 结果（upsert，逻辑键去重）
+    ├── ip_ablation.csv
+    ├── model_scan.csv
+    └── size_audit.csv
 ```
+
+---
 
 ## 复现
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# 按 data/README.md / reports/data-prep-v3.md 下载数据到 data/
-marimo run notebooks/01_optimistic_baseline.py   # 只读展示；或 python notebooks/01_*.py 无头跑
-python scripts/run_lodo.py                        # 跨数据集 LODO 矩阵
-pytest src/tests/                                 # 确定性代码契约单测（~1s）
+# 按 data/README.md 下载数据到 data/
+
+# 展示（只读）
+marimo run notebooks/01_optimistic_baseline.py
+marimo run notebooks/04_lodo_cross_dataset.py
+
+# 实验重跑
+python notebooks/01_optimistic_baseline.py   # §1 乐观 baseline
+python scripts/run_lodo.py                   # §2 LODO 3×3 矩阵
+python scripts/run_ip_ablation.py            # §1.1 IP 消融 + OHE + 稳定性检验
+python scripts/run_model_scan.py             # §2.2 多模型扫描
+
+# 测试（两层）
+pytest src/tests/                            # 代码契约（确定性，~1s）
+pytest notebooks/01_optimistic_baseline.py \
+       notebooks/02_ip_ablation.py \
+       notebooks/03_honest_temporal_split.py \
+       notebooks/04_lodo_cross_dataset.py -v # 叙事方向性断言（会重跑 notebook）
 ```
 
-固定随机种子见 `config.py` (`SEED = 42`)。所有实验结果落盘到 `results/experiments.csv`。
-测试分两层：`src/tests/`（代码契约，确定性）+ notebook 内嵌 `test_`（叙事方向性断言）——
-详见 `notebooks/README.md`。
+固定随机种子见 `config.py`（`SEED = 42`）。实验结果按逻辑键 upsert 到 `results/experiments.csv`（重复跑不会产生重复行）。
 
-## 结果
-
-> _待 MVP 实验填充：乐观 vs 诚实对比表 + base-rate 误报量分析。见 `reports/findings.md`。_
+---
 
 ## 合规 / 治理
 
-- **数据治理**：仓库不含原始数据，仅 `data/README.md` 的下载脚本 + SHA-256；许可证写入 `data_card.md`（升 Portfolio 档时补）。
+- **数据治理**：仓库不含原始数据，仅 `data/README.md` 的下载指引 + SHA-256；许可证写入 `data/README.md`（UQ 学术条款）。
+- **PII 处理**：v3 含真实 IP（PII）；实验中仅用于消融演示、不落盘原始 IP；生产使用应脱敏或直接剔除（`drop_leakage_features` 默认删 IP/端口）。
 - **诚实评估即 model risk 意识**：暴露泄漏/泛化崩塌、用真实 base rate 重解读误报，呼应 NCSC 检测指南与英国岗位的 model risk / 可审计信号。
+
+---
 
 ## 参考
 

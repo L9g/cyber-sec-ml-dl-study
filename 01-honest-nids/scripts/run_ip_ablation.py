@@ -14,8 +14,10 @@
 模型固定 LightGBM（多模型鲁棒性是 §2.2 的事，这里只动特征/切分）。
 
 ⚠️ factorize 口径：单数据集内（random/temporal）**整表一次性 factorize**，train/test 共享 IP 码空间
-（才可能记忆）；LODO 下 train(UNSW)/test(ToN,CSE) **各自独立 factorize**——码彼此无意义，正是
-「IP 跨数据集不可迁移」的如实建模。
+（才可能记忆）；LODO 下 train(UNSW)/test(ToN,CSE) **各自独立 factorize**——整数码各自从 0 排，无
+共享语义。IP 地址是网络本地身份空间，不存在跨数据集共享命名空间；无论编码方式（独立整数码 /
+OHE-unknown / 直接丢弃），IP-only 模型在 LODO 条件下均无可迁移信号（§OHE 段用
+OHE(handle_unknown="ignore") 对照验证：两条路结论一致，机制不同）。
 """
 import sys
 import time
@@ -25,8 +27,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 from lightgbm import LGBMClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, average_precision_score, confusion_matrix
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
 
 from config import DATA_DIR, SEED, seed_everything
 from src import data as d
@@ -105,11 +108,13 @@ def main():
         print(f"  {policy:<13} {split:<14} acc={m['accuracy']:.4f} f1={m['macro_f1']:.4f} "
               f"pr_auc={m['pr_auc']:.4f} recall={m['minority_recall']:.4f} fpr={m['fpr']:.4f}")
 
-    # 预载 LODO 测试集（各 1M，各自独立 factorize）
-    lodo_tests = {}
+    # 预载 LODO 测试集（各 1M）：保留原始字符串 IP 供 OHE；factorize 版供主实验
+    lodo_raws_str = {}  # 原始数据（字符串 IP），供 §OHE 使用
+    lodo_tests = {}     # factorize 整数码，供主实验使用
     for te in ("ToN-IoT", "CSE-CIC"):
-        lodo_tests[te] = factorize_objects(
-            d.load_netflow_sampled(find(DS[te]), max_rows=TEST_CAP))
+        _raw = d.load_netflow_sampled(find(DS[te]), max_rows=TEST_CAP)
+        lodo_raws_str[te] = _raw
+        lodo_tests[te] = factorize_objects(_raw)
 
     for policy in ("ip_only", "full_keep_ip", "full_drop_ip"):
         cols = feat_cols(unsw, policy)
@@ -140,6 +145,40 @@ def main():
                              unsw[shared], unsw["Label"]),
                          te_df[shared], te_df["Label"])
             log(policy, f"LODO→{te}", m, note=f"feats={len(shared)}")
+
+    # === §S CSE-CIC 采样稳定性（ip_only factorize LODO）===
+    # 检验 PR-AUC≈0.22 是否随 1M 采样种子漂移。若多 seed 均稳定高于基线（~0.13），
+    # 说明独立 factorize 引入了真实的序数相关（不是纯噪声）——需用 §OHE 正面封堵。
+    print("\n=== §S CSE-CIC 采样稳定性（ip_only factorize）===")
+    _cols_ip = [c for c in IP_ONLY if c in unsw.columns]
+    _clf_ip_stability = LGBMClassifier(random_state=SEED, n_jobs=-1, verbose=-1).fit(
+        unsw[_cols_ip], unsw["Label"])
+    _stability_aucs = []
+    for _s in (42, 0, 123, 7):
+        _te_stab = factorize_objects(
+            d.load_netflow_sampled(find(DS["CSE-CIC"]), max_rows=TEST_CAP, seed=_s))
+        _proba_stab = _clf_ip_stability.predict_proba(_te_stab[_cols_ip])[:, 1]
+        _auc_stab = average_precision_score(_te_stab["Label"], _proba_stab)
+        _base_stab = _te_stab["Label"].mean()
+        print(f"  seed={_s}: PR-AUC={_auc_stab:.4f}  baseline={_base_stab:.4f}  delta={_auc_stab-_base_stab:+.4f}")
+        _stability_aucs.append(_auc_stab)
+    print(f"  → range {min(_stability_aucs):.4f}–{max(_stability_aucs):.4f}（{'稳定高于' if all(a > 0.15 for a in _stability_aucs) else '部分低于'}基线 ~0.13）")
+
+    # === §OHE ip_only_ohe：封堵「独立 factorize = 编码伪影」追问 ===
+    # 目标 IP 在 UNSW 训练集里全部未见 → OHE 映射为零向量 → 模型无特征信号 →
+    # PR-AUC 应退化到目标数据集随机基线（攻击占比）。两条路结论一致，机制不同：
+    #   独立 factorize → 序数噪声（有时 > 基线）；OHE-unknown → 零向量（恒 ≈ 基线）。
+    print("\n=== §OHE ip_only_ohe（OHE handle_unknown='ignore'）===")
+    _ohe = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    _X_unsw_ohe = _ohe.fit_transform(unsw_raw[IP_ONLY].astype(str))
+    _clf_ohe = LGBMClassifier(random_state=SEED, n_jobs=-1, verbose=-1).fit(
+        _X_unsw_ohe, unsw_raw["Label"])
+    for _te_name, _te_raw in lodo_raws_str.items():
+        _X_te_ohe = _ohe.transform(_te_raw[IP_ONLY].astype(str))
+        _m_ohe = evaluate(_clf_ohe, _X_te_ohe, _te_raw["Label"])
+        log("ip_only_ohe", f"LODO→{_te_name}", _m_ohe, note="OHE unknown→零向量")
+        print(f"    随机基线={_te_raw['Label'].mean():.4f}  PR-AUC={_m_ohe['pr_auc']:.4f}"
+              f"  delta={_m_ohe['pr_auc']-_te_raw['Label'].mean():+.4f}")
 
     out = pd.DataFrame(results)
     out_csv = DATA_DIR.parent / "results" / "ip_ablation.csv"

@@ -52,7 +52,8 @@ def cap(df: pd.DataFrame, max_rows: int | None, label_col: str = "Label") -> pd.
 def prep(df: pd.DataFrame) -> pd.DataFrame:
     extra = [c for c in ["Attack", "Dataset"] if c in df.columns]
     work = df.drop(columns=extra)
-    work = fe.drop_leakage_features(work)
+    # 删 IP/端口（身份/环境特征）+ 绝对时间戳（编码采集时段，不可跨数据集迁移）
+    work = fe.drop_leakage_features(work, extra=fe.NETFLOW_ABSOLUTE_TIMESTAMP_FEATURES)
     for col in work.select_dtypes(include="object").columns:
         if col != "Label":
             work[col] = pd.factorize(work[col])[0]
@@ -72,7 +73,7 @@ def main() -> None:
     prepped = {k: prep(v) for k, v in dfs.items()}
     feat_sets = [set(v.columns) - {"Label"} for v in prepped.values()]
     shared_feats = sorted(set.intersection(*feat_sets))
-    print(f"  共有特征数（去泄漏后）: {len(shared_feats)}")
+    print(f"  共有特征数（去 IP/端口 + 去绝对时间戳后）: {len(shared_feats)}")
 
     print("\n=== LODO 训练 + 评估 ===")
     results = []

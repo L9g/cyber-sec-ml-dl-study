@@ -5,8 +5,8 @@
 跨训练量测每格的 recall@0.5 与 PR-AUC，算**变异系数(CV)**，头条数字 = CV(recall) ≫ CV(PR-AUC)。
 并检验「PR-AUC 低于随机」这个临界计数稳不稳，及直接给出脆弱性机制。
 
-**审计的是头条 §2 配置**：故**时间戳入特征**（与 run_lodo.py 一致，非 §2.2 scan 的剔除版）——
-这样脆弱性结论直接落在头条那张表的 recall 列上。
+**审计的是头条 §2 配置**：故**去时间戳**（与 run_lodo.py 47 特征口径一致，修复 2026-06-29
+时间戳口径对齐后统一）——脆弱性结论直接落在头条那张表的 recall 列上。
 
 紧范围（设计取舍见会话记录：不做 4×6×3 全格普查）：
   模型   = LightGBM, LogReg
@@ -60,10 +60,10 @@ def find_dataset(name: str) -> Path:
 
 
 def prep(df: pd.DataFrame) -> pd.DataFrame:
-    """头条口径：去非特征列 + 去 IP/端口；**保留时间戳**（与 run_lodo.py 一致）。"""
+    """头条口径：去非特征列 + 去 IP/端口 + 去绝对时间戳（47 特征，与 run_lodo.py 一致）。"""
     extra = [c for c in ["Attack", "Dataset"] if c in df.columns]
     work = df.drop(columns=extra)
-    work = fe.drop_leakage_features(work)
+    work = fe.drop_leakage_features(work, extra=fe.NETFLOW_ABSOLUTE_TIMESTAMP_FEATURES)
     for col in work.select_dtypes(include="object").columns:
         if col != "Label":
             work[col] = pd.factorize(work[col])[0]

@@ -3,9 +3,9 @@
 > **本目录不提交原始数据**（数据治理硬规矩，主文档 6.2）。仅放下载说明 + checksum。
 > 下载后的文件被 `.gitignore` 排除。
 
-## 主数据集：NetFlow-v2 统一系列
+## 主数据集：NetFlow-v3 统一系列
 
-由 Sarhan et al. 统一成 43 个 NetFlow 特征（`sarhan2021standardfeature`），支持跨数据集 LODO。
+由 Sarhan et al. 扩展到 53 个 NetFlow 特征（含真 IP + 真时间戳），支持 IP 泄漏消融、真 temporal split 与跨数据集 LODO。
 
 来源（✅ 2026-06 核实）：
 - **官方主页**：UQ Cyber Research Centre — https://www.cyber.uq.edu.au/project/machine-learning-based-nids-datasets

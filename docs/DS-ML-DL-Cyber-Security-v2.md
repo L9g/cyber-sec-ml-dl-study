@@ -396,7 +396,7 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 - **交易图按时间步完全断开**：全部 234,355 条边两端 Δ(Time step)=0，无跨期边 → 裸拓扑无跨期结构信号（解释此处 GNN 难有增益）。
 - **钱包 illicit 标签 = 交易 illicit 标签的确定性传播**：`wallet-illicit ⟺ 地址参与过 ≥1 illicit 交易`，**14,266/14,266 双条件零例外** = guilt-by-association、事后/全局。→ actor 标签**不是独立监督**（是 tx 标签用 OR/max 抬到实体级），把「actor-level PR-AUC」当独立成绩报是误导。
 
-#### 核心发现（MVP 薄切片已跑通，`results/experiments.csv` + `notebooks/01–05`）
+#### 核心发现（MVP 薄切片跑通 + Reference 起步，`results/experiments.csv` + `notebooks/01–06`）
 
 > **4 条实腿**。旗舰问句「granularity vs provenance」的诚实答案（当前）：**两轴纠缠、非二选一**——granularity 是真实操作轴（换聚合算子，队首调查队列大幅分叉），但它的「正确解」被 label provenance 钉死（钱包标签是交易标签的 OR/max 传播 ⇒ max 是匹配算子）。
 
@@ -409,11 +409,12 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
    - **整体 PR-AUC 掩盖之**：max **0.7362** 仅比 mean 0.7202 高 0.016——**又一次「报曲线不报单点」**，单点 AUC 会让人误判「聚合无所谓」，而队首互换掉数百 illicit 地址（1% 预算 mean 从 max illicit 队首掉 785／另捞 567 = 双向重排、非单调损失）。
    - **对称 volume bias**（队首）：**sum 偏爱高吞吐**（体量冒充 illicitness、公平性坑）、**mean 偏爱单笔**、max 居中——每种聚合是一种风控立场，无中立并法。
    - **granularity 不独立于 provenance**：标签是 OR/max 传播 → **max 是匹配算子、故整体 PR-AUC 最高**（近乎同义反复，非检测力背书；回溯循环仍在，勿把 actor-PR-AUC 当独立成绩）。
+6. **【实·Reference 起步】原生 actor 模型证 actor 队列独立信号很弱**（`notebooks/06` + `reports/native-actor-vs-projection.md`）：用 51 维地址特征直接建模（不碰交易分数）、group-aware **inductive** split（test=首现>34、无实体泄漏），**原生 PR-AUC 仅 0.297 而 tx 投影碾压它 0.741**；5% 预算 who-catches 不对称（仅 proj 1,468 ≫ 仅 native 128）→ 原生大体是投影的更弱子集。**gap = guilt-by-association 循环的显形**（投影下游于「是否触过 illicit 交易」这个定义标签的信号，几乎按构造匹配标签；0.30 才是地址特征诚实上限）。→ 旗舰问句「actor 有无独立信号」诚实答案 = **有但很少，大头是循环的标签回收**，加固 provenance 主线；且「切分干净（inductive）≠ 标签干净（全局/事后）」。
 
 #### 实施步骤（分档，先 MVP 再升档）
 
 - **MVP（✅ 已完成）**：EDA → temporal split + **纯表格 LightGBM baseline**（不碰 GNN）→ 非 GNN 对照（node2vec / IsolationForest）→ **actor 投影（max，input+output participation）+ 两标签体系 yield 对照** → **标签来源审计（guilt-by-association 双条件）** → **Setting C 错误示范** → **归因表雏形** → **聚合扇出（mean / sum / top3-mean，granularity 转实腿：队首现象 + 对称 volume bias + 被 provenance 钉死）**。切分口径统一 temporal；**transductive vs inductive** 两设定各自给结论（AML 最常被审计质疑的点）；Time step 只排序不进特征。
-- **Reference-grade**：原生 actor-level 模型（不经 tx 投影，看能否跳出投影框架）；再扇出 time-decay / counterparty-weighted 聚合；GraphSAGE / GAT / EvolveGCN，量化图相比表格 baseline 的**净增益来自结构还是时序**（不预设图会赢）。
+- **Reference-grade（进行中）**：✅ 原生 actor-level 模型（不经 tx 投影，`notebooks/06`——证独立信号弱、投影碾压、gap=循环显形）；⬜ 再扇出 time-decay / counterparty-weighted 聚合；⬜ GraphSAGE / GAT / EvolveGCN（AddrAddr 图），须同时打过原生 tabular(0.30) 与 tx 投影(0.74)，量化净增益来自**结构还是时序**（不预设图会赢）。
 - **Strong**：**AML Decision Card**（给调查员，不止给指标）——每条 top alert 输出：交易/地址 + 图证据子图（GNNExplainer）+ 校准后置信度 + 决策（escalate / clear / **investigate**，不确定主动 abstain）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 的 case 分诊，与路由 backlog 的 RPKI Decision Card 同模具（`network-detection-candidates-draft.md` §6），建一次复用。
 - **Research-grade**：Elliptic2 子图分类 / 有向多重图 GNN（Egressy）。
 

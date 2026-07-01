@@ -52,6 +52,45 @@ def test_yield_at_budget_monotone_and_exact():
     assert rows[1]["k"] == 2 and rows[1]["recall"] == 1.0 and rows[1]["precision"] == 1.0
 
 
+def _toy_wallets():
+    # 地址 a：ts 30,35（跨界，min=30≤34）；b：ts 32（only train）；
+    # c：ts 40（only test，min>34）；d：ts 36,38（only test）；e：ts 33（unknown 标签）
+    return pd.DataFrame(
+        {
+            "address": ["a", "a", "b", "c", "d", "d", "e"],
+            "Time step": [30, 35, 32, 40, 36, 38, 33],
+            "first_block_appeared_in": [1, 1, 2, 9, 5, 5, 3],  # 绝对 block=泄漏列
+            "g1": [0.1, 0.9, 0.2, 0.3, 0.4, 0.8, 0.5],
+        }
+    )
+
+
+def _toy_wallet_classes():
+    return pd.DataFrame({"address": ["a", "b", "c", "d", "e"], "class": [1, 2, 1, 2, 3]})
+
+
+def test_wallet_feature_columns_drops_absolute_block_and_ids():
+    cols = d.wallet_feature_columns(_toy_wallets())
+    assert cols == ["g1"]                                  # 只剩真特征
+    assert "first_block_appeared_in" not in cols           # 绝对 block 泄漏列被剔
+    assert "Time step" not in cols and "address" not in cols
+
+
+def test_native_actor_split_no_leakage_and_last_snapshot():
+    wf, wc = _toy_wallets(), _toy_wallet_classes()
+    tr, te = d.native_actor_temporal_split(wf, wc, train_max_step=34)
+    # train 地址（首现≤34）：a,b（e 是 unknown 被丢）；a 取 ≤34 的最后快照 = ts30 行(g1=0.1)
+    assert sorted(tr["address"]) == ["a", "b"]
+    assert float(tr.loc[tr["address"] == "a", "g1"].iloc[0]) == 0.1   # 不是 ts35 的 0.9
+    # test 地址（首现>34，纯 inductive）：c,d；d 取最后快照 ts38(g1=0.8)
+    assert sorted(te["address"]) == ["c", "d"]
+    assert float(te.loc[te["address"] == "d", "g1"].iloc[0]) == 0.8
+    # 无泄漏：train/test 地址集合不相交
+    assert set(tr["address"]).isdisjoint(set(te["address"]))
+    # 每地址唯一一行
+    assert tr["address"].is_unique and te["address"].is_unique
+
+
 def test_log_experiment_upsert_idempotent(tmp_path):
     csv = tmp_path / "exp.csv"
     base = {"experiment": "tx_baseline", "task": "transaction", "split": "temporal",

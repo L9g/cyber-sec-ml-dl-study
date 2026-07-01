@@ -127,3 +127,64 @@ def labeled_only(df: pd.DataFrame) -> pd.DataFrame:
     乐观（漏掉「未被调查过的洗钱」）。在 notebook 里要显式标注此假设。
     """
     return df[df[CLASS_COL].isin([LABEL_ILLICIT, LABEL_LICIT])].copy()
+
+
+# ── 原生 actor（地址级）模型：不经 tx 投影，直接学地址特征 ──────────────
+ADDR_COL = "address"
+
+# 绝对时间（block 索引）特征：单调随时间、不可跨期迁移 → 剔除（同 tx 的 Time step）。
+# lifetime_in_blocks / blocks_btwn_* 是时间**差/间隔**（相对、可迁移），保留。
+WALLET_ABSOLUTE_BLOCK_FEATURES = [
+    "first_block_appeared_in",
+    "last_block_appeared_in",
+    "first_sent_block",
+    "first_received_block",
+]
+
+
+def load_wallet_features(raw_dir: Path | None = None) -> pd.DataFrame:
+    """地址级特征（per (address, Time step) 一行）。
+
+    ⚠️ 原始文件有完全重复行（实测 594,114 行整行重复）→ 去精确重复。
+    特征是地址在该时间步的累积/聚合统计（lifetime、total_txs、btc_* 等）。
+    """
+    wf = pd.read_csv(_p("wallets_features.csv", raw_dir))
+    wf = wf.drop_duplicates().reset_index(drop=True)
+    return wf
+
+
+def wallet_feature_columns(df: pd.DataFrame) -> list[str]:
+    """地址特征列 = 全列去 address / Time step / 4 个绝对 block 索引（泄漏）。"""
+    exclude = [ADDR_COL, TIME_COL, CLASS_COL, *WALLET_ABSOLUTE_BLOCK_FEATURES]
+    return [c for c in df.columns if c not in exclude]
+
+
+def native_actor_temporal_split(
+    wf: pd.DataFrame, wc: pd.DataFrame, train_max_step: int = 34
+):
+    """原生 actor 的 group-aware temporal split（一地址一行、无跨 split 泄漏）。
+
+    - **train** = 首现 ≤ train_max_step 的地址，取其在 ≤train_max_step 内的**最后快照**
+      （含跨界地址的早期快照）。
+    - **test** = 首现 > train_max_step 的地址（**纯 inductive**：训练期从未见），取最后快照。
+      → 两侧地址集合**不相交**，测试地址训练时完全未见，杜绝「同地址两侧泄漏」
+      （AML 最常被审计质疑的实体 group-split，见 CLAUDE.md）。
+
+    返回 (train_df, test_df)，均已 labeled_only、每地址唯一一行、含 class 列。
+    确定性、与模型无关 → 逻辑在 src、贴死单测。
+    """
+    wf = wf.sort_values([ADDR_COL, TIME_COL], kind="mergesort")
+    first_ts = wf.groupby(ADDR_COL)[TIME_COL].transform("min")
+
+    # train：地址首现 ≤ 阈值；用其 ≤阈值 的最后一行快照
+    tr_pool = wf[(first_ts <= train_max_step) & (wf[TIME_COL] <= train_max_step)]
+    train = tr_pool.groupby(ADDR_COL, as_index=False).last()
+
+    # test：地址首现 > 阈值（纯 inductive）；用其最后一行快照
+    te_pool = wf[first_ts > train_max_step]
+    test = te_pool.groupby(ADDR_COL, as_index=False).last()
+
+    wc_map = wc[[ADDR_COL, CLASS_COL]]
+    train = labeled_only(train.merge(wc_map, on=ADDR_COL, how="left"))
+    test = labeled_only(test.merge(wc_map, on=ADDR_COL, how="left"))
+    return train, test

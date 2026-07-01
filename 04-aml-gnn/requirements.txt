@@ -1,0 +1,20 @@
+# MVP 档依赖（纯表格 LightGBM，不碰 GNN）——保持精简
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+lightgbm>=4.0
+shap>=0.44
+matplotlib>=3.7
+pyarrow>=14.0
+marimo>=0.23      # 反应式 notebook（.py 单格式）
+pytest>=8.0
+gdown>=5.0        # 从 Google Drive 拉 Elliptic++
+pecanpy>=2.0      # 非 GNN 对照：node2vec 嵌入（C/numba 加速）
+gensim>=4.3       # pecanpy 的 word2vec 后端
+# ⚠️ gensim 目前会把 numpy 钉在 <2，与 shap 0.52(需 numpy>=2)冲突。
+#    shap 要到 Decision Card 档才用；届时再统一 numpy 版本（或换 shap 版本）。
+numpy<2           # 暂随 gensim 约束；解冲突前锁定，避免环境漂移
+
+# ── 以下 Reference-grade 档（GNN）再装，MVP 不引入 ──
+# torch>=2.2
+# torch-geometric>=2.5

@@ -166,7 +166,7 @@
 | 威胁面 | 在四项目里的落点 |
 |---|---|
 | **特征泄漏 + 跨分布崩塌** | 项目一（IP/重复流泄漏、LODO 跨数据集、真 temporal split） |
-| **标签来源泄漏（label provenance）** | 项目四（AML 选择性标注 / 核实延迟 / 暗市关停漂移）—— honest-nids 从「特征泄漏」到「标签泄漏」的升级 |
+| **标签来源泄漏（label provenance）** | 项目四（AML 选择性标注 unknown≠benign / 钱包标签=交易标签 guilt-by-association 传播、非独立监督）—— honest-nids 从「特征泄漏」到「标签泄漏」的升级 |
 | **对抗输入完整性** | 项目二（prompt injection：把不可信数据当系统指令） |
 | **数据/模型投毒** | 项目二（HackAPrompt 对抗料）+ 可选对抗 ML 扩展（EMBER evasion）+ 路由安全 backlog（公开 BGP monitor 可投毒） |
 | **操作点脆弱性（阈值/采样/预算下指标漂移）** | 全部——用曲线（PR-AUC、coverage-vs-abstention）不用单点 accuracy |
@@ -378,24 +378,40 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 
 **数据集**：**Elliptic++**（主，比特币交易+地址图）+ IEEE-CIS Fraud（辅，表格欺诈对照）。
 
-#### 背景与问题
+#### 卖点：当 AML 队列不一致——是打分粒度还是标签来源？
+
+> **When AML queues disagree: scoring granularity or label provenance?**
+
+交易级打分和 actor/地址级调查队列往往不一致（Malik 2026 实证 Jaccard 低）。本项目**跨过**「两队列不重叠」这一步，把不一致**拆成来源**：scoring granularity（聚合损失）vs label provenance（交易标签体系 ≠ 地址标签体系）。**不是**「又一个 Elliptic GNN 刷 AUC」——表格 baseline 是「图是否真有用」的诚实对照（Weber 2019 自报 RF > 普通 GCN），GNN 退居 Reference 档附录（很可能证明「再复杂的模型也修不了标签口径错配」）。这把 honest-nids 的「特征泄漏」签名升级到「**标签体系先决定了哪些评估问题能被诚实回答**」。
+
+#### 背景与已核实数据事实（Elliptic++）
 
 ```
-问题：在比特币交易网络中识别非法（洗钱）交易/地址。
-数据：图结构——节点=交易/钱包地址，边=资金流向，部分节点有 illicit/licit 标签。
-难点：极度不平衡、大量未标注节点（半监督）、时间演化、可解释性要求高（合规）。
+问题：在比特币交易网络中识别非法（洗钱）交易/地址，并把交易级分数投影成 actor 调查队列。
+数据：交易图 203,769 笔 / 49 时间步（illicit=已标注内 9.76%）+ 地址图 822,942。
+     标签 1=illicit / 2=licit / 3=unknown（未标注 ≠ 良性）。
 ```
 
-#### 实施步骤
+进入建模前，两条**确定性数据事实**（notebooks/03–04 实测，非文献转述）已重塑问题：
+- **交易图按时间步完全断开**：全部 234,355 条边两端 Δ(Time step)=0，无跨期边 → 裸拓扑无跨期结构信号（解释此处 GNN 难有增益）。
+- **钱包 illicit 标签 = 交易 illicit 标签的确定性传播**：`wallet-illicit ⟺ 地址参与过 ≥1 illicit 交易`，**14,266/14,266 双条件零例外** = guilt-by-association、事后/全局。→ actor 标签**不是独立监督**（是 tx 标签用 OR/max 抬到实体级），把「actor-level PR-AUC」当独立成绩报是误导。
 
-1. **EDA + 图理解**：节点/边规模、标签分布、时间步（Elliptic 含 49 个时间步）、illicit 占比。
-2. **Temporal split（合规关键，避免未来信息泄漏）**：按时间步切分（如前 34 步训练、后 15 步测试），**绝不**用未来交易预测过去；明确说明 **transductive（测试节点在训练时已可见）vs inductive（测试节点完全未见）** 两种设定的差异和各自结论——这是 AML 模型最常被审计质疑的点。
-3. **表格 baseline**：只用节点特征跑 LightGBM/XGBoost，建立非图基线（也是本项目的 **MVP 档**，无需 GNN 即可交付）。
-4. **图模型**：GCN / GraphSAGE / GAT；对比「加了图结构」相比表格 baseline 的提升。
-5. **时序图**：EvolveGCN 等，利用时间步演化。
-6. **不平衡 + 半监督**：focal loss / 重采样；利用大量未标注节点。
-7. **标签来源审计（label provenance —— 本项目相对项目一最强的方法学增量）**：AML 标签的本质缺陷比 NIDS 严重——**只在「被调查过的告警」上有标签（selective labeling / 核实延迟），未标注 ≠ 良性**；且 Elliptic 有暗市关停后跨时段分布漂移（⚠️ 此漂移现象待进库前二次核实）。据此审计：① 标注是否选择性偏差；② 同一地址/实体是否跨 split 泄漏（应按实体/时间 group split，呼应项目一重复流泄漏）；③ illicit 标签时间一致性。输出一份**标签可信度分级**，喂回下条的 abstain 逻辑。这把 honest-nids 的「特征泄漏」签名升级到「标签泄漏」。
-8. **可解释分诊输出（AML Decision Card —— 给调查员，不止给指标）**：每条 top alert 输出一张卡：交易/地址 + 图证据子图（GNNExplainer）+ 实体关系 + 模型分数 + **校准后置信度** + 决策（escalate / clear / **investigate**，不确定主动 abstain 到 investigate）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 真正做的「给分析师的 case 分诊 + 可解释」，而非 Elliptic 上刷 AUC。此卡片与路由安全 backlog 的 RPKI Decision Card 同一模具（见 `network-detection-candidates-draft.md` §6），建一次复用。
+#### 核心发现（MVP 薄切片已跑通，`results/experiments.csv` + `notebooks/01–04`）
+
+> **3 条实腿 + 1 条明确推迟**。旗舰问句「granularity vs provenance」的诚实答案（当前）：**provenance 是操作轴；granularity 在 max 聚合下不存在，需 mean/sum 才谈得上**。
+
+1. **【实】诚实表格 baseline 立住**：temporal LightGBM **PR-AUC 0.813**（随机基线 0.065）；node2vec / IsolationForest 近/劣于随机 → **判别力在工程特征、不在裸拓扑**（呼应 Weber/Deprez）。
+2. **【实】label provenance = guilt-by-association**（见上双条件）：illicit 类上 tx 与 wallet 标签**构造上不可能冲突**，故队列不一致**不是** illicit 的 label-conflict。
+3. **【实】unknown ≠ benign（错误示范，Setting C）**：把 69% unknown 当 benign → actor PR-AUC 0.736→**0.309**，但 **top 队列零 licit**——precision「崩塌」全来自 unknown 被误记 FP（selective-labeling coverage artifact，非模型退化）。详见 `reports/setting-c-unknown-not-benign.md`。
+4. **【实】队列不一致归因（列联表，非加法）**：队列位置（input+output participation）× 钱包标签，每 actor 判唯一主导成因——**coverage-gap 主导**（unknown 在队 11,938@5%）> detection-miss（1,940）≫ label-conflict（193≈0）。
+5. **【推迟】scoring granularity / 投影损失**：**max 下 ≡ 0**（transaction-first 与 actor-first 取到的地址集合相同，Jaccard=1）。§2 的 tx-yield vs actor-yield 差是**不同调查单元/分母的口径差、Δ 符号还随预算翻转**，**不是**投影损失。真正的投影损失要 mean/sum/top-k 聚合才非零 → Reference 档扇出再测。
+
+#### 实施步骤（分档，先 MVP 再升档）
+
+- **MVP（✅ 已完成）**：EDA → temporal split + **纯表格 LightGBM baseline**（不碰 GNN）→ 非 GNN 对照（node2vec / IsolationForest）→ **actor 投影（max，input+output participation）+ 两标签体系 yield 对照** → **标签来源审计（guilt-by-association 双条件）** → **Setting C 错误示范** → **归因表雏形**。切分口径统一 temporal；**transductive vs inductive** 两设定各自给结论（AML 最常被审计质疑的点）；Time step 只排序不进特征。
+- **Reference-grade**：扇出聚合策略（mean / sum / top-k / time-decay——解除 max 退化、投影损失非零）；GraphSAGE / GAT / EvolveGCN，量化图相比表格 baseline 的**净增益来自结构还是时序**（不预设图会赢）。
+- **Strong**：**AML Decision Card**（给调查员，不止给指标）——每条 top alert 输出：交易/地址 + 图证据子图（GNNExplainer）+ 校准后置信度 + 决策（escalate / clear / **investigate**，不确定主动 abstain）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 的 case 分诊，与路由 backlog 的 RPKI Decision Card 同模具（`network-detection-candidates-draft.md` §6），建一次复用。
+- **Research-grade**：Elliptic2 子图分类 / 有向多重图 GNN（Egressy）。
 
 #### 评价指标（按真实 AML 工作方式，而非单纯 GNN F1）
 - **precision@k / recall@k**：AML 团队按调查容量处理 top alerts，整体 F1 不如「前 k 个告警里有多少真命中」有意义。
@@ -415,9 +431,10 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 #### 项目推荐标题
 
 ```
-Graph-Based Anti-Money-Laundering: Detecting Illicit Bitcoin
-Transactions with GNNs and Explainable Subgraphs
+When AML Queues Disagree: Scoring Granularity vs Label Provenance
+in Bitcoin Transaction/Actor Networks (Elliptic++)
 ```
+（旧标题「Graph-Based AML with GNNs and Explainable Subgraphs」= Strong/Research 档的子标题，非主线卖点。）
 
 #### （可选）对抗 ML 扩展
 
@@ -593,11 +610,16 @@ AgentDyn, comparing tool filtering, prompt-based defenses and ML detectors
 (DeBERTa, PromptGuard2) across utility, attack-success and over-defense rates.
 ```
 
-**项目四（AML 图学习）**
+**项目四（AML 队列不一致 / 标签来源）**
 ```
-Developed an explainable graph-based anti-money-laundering model on the Elliptic++
-Bitcoin dataset, benchmarking GNNs (GraphSAGE, EvolveGCN) against tabular baselines
-under extreme class imbalance, with GNNExplainer subgraphs for compliance review.
+Investigated why transaction-level scores and actor-level AML investigation queues
+disagree on Elliptic++, separating scoring-granularity (projection loss) from label
+provenance. Showed the wallet illicit label is a deterministic guilt-by-association
+propagation of the transaction label (biconditional, no exceptions), so actor
+evaluation is not independent supervision; demonstrated the unknown≠benign trap
+(treating unlabelled actors as negative is a coverage artifact, not model error) via
+temporal LightGBM baselines and a queue-disagreement attribution table. GNNs
+(GraphSAGE/EvolveGCN) and GNNExplainer subgraphs reserved for the upgrade tier.
 ```
 
 **项目三（SIEM）**

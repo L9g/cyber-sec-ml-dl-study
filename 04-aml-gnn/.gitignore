@@ -1,0 +1,29 @@
+# 数据治理硬规矩：绝不提交原始大数据（见主文档 6.2）
+data/**
+!data/README.md
+!data/checksums.sha256
+
+# 模型与大产物
+models/
+*.pkl
+*.joblib
+*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# marimo 运行缓存（只提交 .py 源）
+notebooks/__marimo__/
+__marimo__/
+
+# 密钥
+.env
+
+# 保留实验落盘
+!results/experiments.csv
+# AI agent 相关
+.codex/

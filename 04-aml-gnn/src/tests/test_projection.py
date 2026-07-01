@@ -32,3 +32,31 @@ def test_project_empty_when_no_scores_match():
     out = proj.project_scores_to_actors(_toy_edges(), {999: 0.5}, agg="max")
     assert len(out) == 0
     assert list(out.columns) == ["address", "actor_score"]
+
+
+def test_project_sum_accumulates():
+    # sum 聚合下 a=0.1+0.9=1.0（volume bias：多笔交易累加），b=0.5
+    scores = {1: 0.1, 2: 0.9, 3: 0.5}
+    out = proj.project_scores_to_actors(_toy_edges(), scores, agg="sum")
+    m = dict(zip(out["address"], out["actor_score"]))
+    assert m["a"] == 1.0 and m["b"] == 0.5
+    # sum 下 a(1.0) 仍排 b(0.5) 前
+    assert list(out["address"]) == ["a", "b"]
+
+
+def test_topk_mean_between_max_and_mean():
+    # top1_mean ≡ max；top>=交易数时 ≡ mean。地址 a 两笔(0.1,0.9)：
+    scores = {1: 0.1, 2: 0.9, 3: 0.5}
+    top1 = proj.project_scores_to_actors(_toy_edges(), scores, agg=proj.make_topk_mean(1))
+    top9 = proj.project_scores_to_actors(_toy_edges(), scores, agg=proj.make_topk_mean(9))
+    m1 = dict(zip(top1["address"], top1["actor_score"]))
+    m9 = dict(zip(top9["address"], top9["actor_score"]))
+    assert m1["a"] == 0.9          # top1 = max
+    assert m9["a"] == 0.5          # top9(>2 笔) = mean(0.1,0.9)
+    assert list(top1.columns) == ["address", "actor_score"]
+
+
+def test_make_topk_mean_rejects_zero():
+    import pytest
+    with pytest.raises(ValueError):
+        proj.make_topk_mean(0)

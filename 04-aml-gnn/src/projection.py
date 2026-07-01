@@ -19,10 +19,27 @@ ADDR_COL = "address"
 SCORE_COL = "actor_score"
 
 
+def make_topk_mean(k: int):
+    """返回「取每地址分数最高 k 笔的均值」聚合子（喂 project_scores_to_actors 的 agg）。
+
+    介于 max(k=1) 与 mean(k=∞) 之间：不像 max 被单笔高分主导、也不像 mean 被大量低分
+    交易稀释。地址交易数 < k 时取全部（nlargest 自动截断）。
+    风控语义 = 「要看到 k 笔可疑才升级」。确定性、与模型无关 → src/tests 贴死。
+    """
+    if k < 1:
+        raise ValueError("k must be >= 1")
+
+    def _topk_mean(s):
+        return s.nlargest(k).mean()
+
+    _topk_mean.__name__ = f"top{k}_mean"
+    return _topk_mean
+
+
 def project_scores_to_actors(
     edges: pd.DataFrame,
     scores,
-    agg: str = "max",
+    agg="max",
     addr_col: str = "input_address",
     tx_col: str = "txId",
 ) -> pd.DataFrame:
@@ -30,6 +47,7 @@ def project_scores_to_actors(
 
     edges: DataFrame[addr_col, tx_col]（如 AddrTx：input_address → txId）。
     scores: dict / Series，txId -> score。**未打分的 txId 边被丢弃**（只投影已打分交易）。
+    agg: pandas 聚合名（"max"/"mean"/"sum"）或可调用（如 make_topk_mean(3)）——聚合策略即风控决策。
     返回 DataFrame[address, actor_score]，一行一地址，按 actor_score 降序（队列顺序）。
 
     聚合是确定性的、与模型无关（模型分数在上游算好传入），故可在 src/tests 贴死精确值。

@@ -396,20 +396,24 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 - **交易图按时间步完全断开**：全部 234,355 条边两端 Δ(Time step)=0，无跨期边 → 裸拓扑无跨期结构信号（解释此处 GNN 难有增益）。
 - **钱包 illicit 标签 = 交易 illicit 标签的确定性传播**：`wallet-illicit ⟺ 地址参与过 ≥1 illicit 交易`，**14,266/14,266 双条件零例外** = guilt-by-association、事后/全局。→ actor 标签**不是独立监督**（是 tx 标签用 OR/max 抬到实体级），把「actor-level PR-AUC」当独立成绩报是误导。
 
-#### 核心发现（MVP 薄切片已跑通，`results/experiments.csv` + `notebooks/01–04`）
+#### 核心发现（MVP 薄切片已跑通，`results/experiments.csv` + `notebooks/01–05`）
 
-> **3 条实腿 + 1 条明确推迟**。旗舰问句「granularity vs provenance」的诚实答案（当前）：**provenance 是操作轴；granularity 在 max 聚合下不存在，需 mean/sum 才谈得上**。
+> **4 条实腿**。旗舰问句「granularity vs provenance」的诚实答案（当前）：**两轴纠缠、非二选一**——granularity 是真实操作轴（换聚合算子，队首调查队列大幅分叉），但它的「正确解」被 label provenance 钉死（钱包标签是交易标签的 OR/max 传播 ⇒ max 是匹配算子）。
 
 1. **【实】诚实表格 baseline 立住**：temporal LightGBM **PR-AUC 0.813**（随机基线 0.065）；node2vec / IsolationForest 近/劣于随机 → **判别力在工程特征、不在裸拓扑**（呼应 Weber/Deprez）。
 2. **【实】label provenance = guilt-by-association**（见上双条件）：illicit 类上 tx 与 wallet 标签**构造上不可能冲突**，故队列不一致**不是** illicit 的 label-conflict。
 3. **【实】unknown ≠ benign（错误示范，Setting C）**：把 69% unknown 当 benign → actor PR-AUC 0.736→**0.309**，但 **top 队列零 licit**——precision「崩塌」全来自 unknown 被误记 FP（selective-labeling coverage artifact，非模型退化）。详见 `reports/setting-c-unknown-not-benign.md`。
 4. **【实】队列不一致归因（列联表，非加法）**：队列位置（input+output participation）× 钱包标签，每 actor 判唯一主导成因——**coverage-gap 主导**（unknown 在队 11,938@5%）> detection-miss（1,940）≫ label-conflict（193≈0）。
-5. **【推迟】scoring granularity / 投影损失**：**max 下 ≡ 0**（transaction-first 与 actor-first 取到的地址集合相同，Jaccard=1）。§2 的 tx-yield vs actor-yield 差是**不同调查单元/分母的口径差、Δ 符号还随预算翻转**，**不是**投影损失。真正的投影损失要 mean/sum/top-k 聚合才非零 → Reference 档扇出再测。
+5. **【实】scoring granularity = 队首现象，被 provenance 钉死**（聚合扇出 mean/sum/top-k，`notebooks/05` + `reports/aggregation-fanout-granularity.md`）：max 下投影损失 ≡ 0（transaction-first≡actor-first，Jaccard=1）是**退化**；换 mean/sum/top3 解除后——
+   - **分歧集中在队首**：0.5% 预算 mean-vs-max 队列 Jaccard 仅 **0.17**，5% 才收敛回 ~0.89（多数地址单笔交易→四聚合恒等，分歧只来自被推上队首的少数多笔地址）→ **预算越紧、分歧越大**。
+   - **整体 PR-AUC 掩盖之**：max **0.7362** 仅比 mean 0.7202 高 0.016——**又一次「报曲线不报单点」**，单点 AUC 会让人误判「聚合无所谓」，而队首互换掉数百 illicit 地址（1% 预算 mean 从 max illicit 队首掉 785／另捞 567 = 双向重排、非单调损失）。
+   - **对称 volume bias**（队首）：**sum 偏爱高吞吐**（体量冒充 illicitness、公平性坑）、**mean 偏爱单笔**、max 居中——每种聚合是一种风控立场，无中立并法。
+   - **granularity 不独立于 provenance**：标签是 OR/max 传播 → **max 是匹配算子、故整体 PR-AUC 最高**（近乎同义反复，非检测力背书；回溯循环仍在，勿把 actor-PR-AUC 当独立成绩）。
 
 #### 实施步骤（分档，先 MVP 再升档）
 
-- **MVP（✅ 已完成）**：EDA → temporal split + **纯表格 LightGBM baseline**（不碰 GNN）→ 非 GNN 对照（node2vec / IsolationForest）→ **actor 投影（max，input+output participation）+ 两标签体系 yield 对照** → **标签来源审计（guilt-by-association 双条件）** → **Setting C 错误示范** → **归因表雏形**。切分口径统一 temporal；**transductive vs inductive** 两设定各自给结论（AML 最常被审计质疑的点）；Time step 只排序不进特征。
-- **Reference-grade**：扇出聚合策略（mean / sum / top-k / time-decay——解除 max 退化、投影损失非零）；GraphSAGE / GAT / EvolveGCN，量化图相比表格 baseline 的**净增益来自结构还是时序**（不预设图会赢）。
+- **MVP（✅ 已完成）**：EDA → temporal split + **纯表格 LightGBM baseline**（不碰 GNN）→ 非 GNN 对照（node2vec / IsolationForest）→ **actor 投影（max，input+output participation）+ 两标签体系 yield 对照** → **标签来源审计（guilt-by-association 双条件）** → **Setting C 错误示范** → **归因表雏形** → **聚合扇出（mean / sum / top3-mean，granularity 转实腿：队首现象 + 对称 volume bias + 被 provenance 钉死）**。切分口径统一 temporal；**transductive vs inductive** 两设定各自给结论（AML 最常被审计质疑的点）；Time step 只排序不进特征。
+- **Reference-grade**：原生 actor-level 模型（不经 tx 投影，看能否跳出投影框架）；再扇出 time-decay / counterparty-weighted 聚合；GraphSAGE / GAT / EvolveGCN，量化图相比表格 baseline 的**净增益来自结构还是时序**（不预设图会赢）。
 - **Strong**：**AML Decision Card**（给调查员，不止给指标）——每条 top alert 输出：交易/地址 + 图证据子图（GNNExplainer）+ 校准后置信度 + 决策（escalate / clear / **investigate**，不确定主动 abstain）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 的 case 分诊，与路由 backlog 的 RPKI Decision Card 同模具（`network-detection-candidates-draft.md` §6），建一次复用。
 - **Research-grade**：Elliptic2 子图分类 / 有向多重图 GNN（Egressy）。
 
@@ -613,13 +617,17 @@ AgentDyn, comparing tool filtering, prompt-based defenses and ML detectors
 **项目四（AML 队列不一致 / 标签来源）**
 ```
 Investigated why transaction-level scores and actor-level AML investigation queues
-disagree on Elliptic++, separating scoring-granularity (projection loss) from label
-provenance. Showed the wallet illicit label is a deterministic guilt-by-association
-propagation of the transaction label (biconditional, no exceptions), so actor
-evaluation is not independent supervision; demonstrated the unknown≠benign trap
-(treating unlabelled actors as negative is a coverage artifact, not model error) via
-temporal LightGBM baselines and a queue-disagreement attribution table. GNNs
-(GraphSAGE/EvolveGCN) and GNNExplainer subgraphs reserved for the upgrade tier.
+disagree on Elliptic++, separating scoring-granularity from label provenance. Showed
+the wallet illicit label is a deterministic guilt-by-association propagation (OR/max)
+of the transaction label (biconditional, no exceptions), so actor evaluation is not
+independent supervision; demonstrated the unknown≠benign trap (treating unlabelled
+actors as negative is a coverage artifact, not model error) via temporal LightGBM
+baselines and a queue-disagreement attribution table. Fanning out the actor
+aggregation (max/mean/sum/top-k) showed granularity is a head-of-queue phenomenon
+(0.5%-budget queues overlap only ~0.17) that overall PR-AUC masks, with a symmetric
+volume bias — and that the "correct" aggregation is pinned by the label's OR/max
+provenance (the two axes are entangled, not either/or). GNNs (GraphSAGE/EvolveGCN)
+and GNNExplainer subgraphs reserved for the upgrade tier.
 ```
 
 **项目三（SIEM）**

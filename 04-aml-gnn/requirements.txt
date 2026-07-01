@@ -15,6 +15,9 @@ gensim>=4.3       # pecanpy 的 word2vec 后端
 #    shap 要到 Decision Card 档才用；届时再统一 numpy 版本（或换 shap 版本）。
 numpy<2           # 暂随 gensim 约束；解冲突前锁定，避免环境漂移
 
-# ── 以下 Reference-grade 档（GNN）再装，MVP 不引入 ──
-# torch>=2.2
-# torch-geometric>=2.5
+# ── Reference-grade 档（GNN，notebooks/07）——已装（CPU-only，无 GPU）──
+# 装法（本机无 GPU，用 CPU wheel、避 CUDA 栈）：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install torch-geometric
+torch>=2.2              # CPU wheel；交易图 203k 节点 CPU 分钟级/epoch，无需 GPU
+torch-geometric>=2.5    # GraphSAGE/GCN；地址图 2.87M 边全图训练留云主机（见算力记忆）

@@ -396,7 +396,7 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
 - **交易图按时间步完全断开**：全部 234,355 条边两端 Δ(Time step)=0，无跨期边 → 裸拓扑无跨期结构信号（解释此处 GNN 难有增益）。
 - **钱包 illicit 标签 = 交易 illicit 标签的确定性传播**：`wallet-illicit ⟺ 地址参与过 ≥1 illicit 交易`，**14,266/14,266 双条件零例外** = guilt-by-association、事后/全局。→ actor 标签**不是独立监督**（是 tx 标签用 OR/max 抬到实体级），把「actor-level PR-AUC」当独立成绩报是误导。
 
-#### 核心发现（MVP 薄切片跑通 + Reference 起步，`results/experiments.csv` + `notebooks/01–06`）
+#### 核心发现（MVP 薄切片跑通 + Reference 进行中，`results/experiments.csv` + `notebooks/01–07`）
 
 > **4 条实腿**。旗舰问句「granularity vs provenance」的诚实答案（当前）：**两轴纠缠、非二选一**——granularity 是真实操作轴（换聚合算子，队首调查队列大幅分叉），但它的「正确解」被 label provenance 钉死（钱包标签是交易标签的 OR/max 传播 ⇒ max 是匹配算子）。
 
@@ -410,11 +410,12 @@ Graph-Based Lateral Movement Detection, and LLM-Assisted SOC Triage
    - **对称 volume bias**（队首）：**sum 偏爱高吞吐**（体量冒充 illicitness、公平性坑）、**mean 偏爱单笔**、max 居中——每种聚合是一种风控立场，无中立并法。
    - **granularity 不独立于 provenance**：标签是 OR/max 传播 → **max 是匹配算子、故整体 PR-AUC 最高**（近乎同义反复，非检测力背书；回溯循环仍在，勿把 actor-PR-AUC 当独立成绩）。
 6. **【实·Reference 起步】原生 actor 模型证 actor 队列独立信号很弱**（`notebooks/06` + `reports/native-actor-vs-projection.md`）：用 51 维地址特征直接建模（不碰交易分数）、group-aware **inductive** split（test=首现>34、无实体泄漏），**原生 PR-AUC 仅 0.297 而 tx 投影碾压它 0.741**；5% 预算 who-catches 不对称（仅 proj 1,468 ≫ 仅 native 128）→ 原生大体是投影的更弱子集。**gap = guilt-by-association 循环的显形**（投影下游于「是否触过 illicit 交易」这个定义标签的信号，几乎按构造匹配标签；0.30 才是地址特征诚实上限）。→ 旗舰问句「actor 有无独立信号」诚实答案 = **有但很少，大头是循环的标签回收**，加固 provenance 主线；且「切分干净（inductive）≠ 标签干净（全局/事后）」。
+7. **【实·Reference】交易图 GNN——「图有没有用」的三层对照**（`notebooks/07` + `reports/tx-graph-gnn-does-graph-help.md`，CPU 无 GPU）：LightGBM(GBDT 无图) **0.813** vs MLP(NN 无图) **0.624** vs GraphSAGE(NN+消息传递) **0.660**。**纯消息传递增益 SAGE−MLP = +0.036**（图确有微弱同期信号、非零），但大头缺口是 **NN vs 树 −0.19**——只报「GNN<GBDT」会把账错记到图头上。交易图按时间步断开（复验 Δt=0 → 同期消息传递边际小、temporal split 图层面天然 inductive）。实证「图 > 表格不自动成立」（呼应 Weber 2019 RF>GCN）；图的**大**增益只可能来自跨期时序（地址图 AddrAddr 才有跨期边，2.87M 边、按无-GPU 留云主机）。
 
 #### 实施步骤（分档，先 MVP 再升档）
 
 - **MVP（✅ 已完成）**：EDA → temporal split + **纯表格 LightGBM baseline**（不碰 GNN）→ 非 GNN 对照（node2vec / IsolationForest）→ **actor 投影（max，input+output participation）+ 两标签体系 yield 对照** → **标签来源审计（guilt-by-association 双条件）** → **Setting C 错误示范** → **归因表雏形** → **聚合扇出（mean / sum / top3-mean，granularity 转实腿：队首现象 + 对称 volume bias + 被 provenance 钉死）**。切分口径统一 temporal；**transductive vs inductive** 两设定各自给结论（AML 最常被审计质疑的点）；Time step 只排序不进特征。
-- **Reference-grade（进行中）**：✅ 原生 actor-level 模型（不经 tx 投影，`notebooks/06`——证独立信号弱、投影碾压、gap=循环显形）；⬜ 再扇出 time-decay / counterparty-weighted 聚合；⬜ GraphSAGE / GAT / EvolveGCN（AddrAddr 图），须同时打过原生 tabular(0.30) 与 tx 投影(0.74)，量化净增益来自**结构还是时序**（不预设图会赢）。
+- **Reference-grade（进行中）**：✅ 原生 actor-level 模型（`notebooks/06`——证独立信号弱、投影碾压、gap=循环显形）；✅ 交易图 GNN（`notebooks/07`——三层对照:图仅加 +0.036、大头缺口是 NN vs 树、图>表格不自动成立，CPU 无 GPU）；⬜ 时序图 EvolveGCN / **地址图** GraphSAGE（跨期结构，2.87M 边、需云主机/邻居采样）；⬜ time-decay / counterparty-weighted 聚合。
 - **Strong**：**AML Decision Card**（给调查员，不止给指标）——每条 top alert 输出：交易/地址 + 图证据子图（GNNExplainer）+ 校准后置信度 + 决策（escalate / clear / **investigate**，不确定主动 abstain）+ **why-not-confident**（标签弱/分布外/证据不足）。对标 Quantexa/ComplyAdvantage 的 case 分诊，与路由 backlog 的 RPKI Decision Card 同模具（`network-detection-candidates-draft.md` §6），建一次复用。
 - **Research-grade**：Elliptic2 子图分类 / 有向多重图 GNN（Egressy）。
 
@@ -627,8 +628,13 @@ baselines and a queue-disagreement attribution table. Fanning out the actor
 aggregation (max/mean/sum/top-k) showed granularity is a head-of-queue phenomenon
 (0.5%-budget queues overlap only ~0.17) that overall PR-AUC masks, with a symmetric
 volume bias — and that the "correct" aggregation is pinned by the label's OR/max
-provenance (the two axes are entangled, not either/or). GNNs (GraphSAGE/EvolveGCN)
-and GNNExplainer subgraphs reserved for the upgrade tier.
+provenance (the two axes are entangled, not either/or). A native address-feature
+actor model (inductive, no entity leakage) scored only 0.30 PR-AUC vs 0.74 for the
+tx-projection, showing actor "detectability" is mostly circular label-recovery. A
+three-way GNN control (GBDT / MLP-no-graph / GraphSAGE) on the transaction graph
+found message passing adds only +0.036 (graph disconnected across time), so "graph >
+tabular" does not hold and most of the GNN–GBDT gap is NN-vs-trees, not graph-vs-none.
+EvolveGCN / address-graph GNN (2.87M edges) reserved for the cloud/upgrade tier.
 ```
 
 **项目三（SIEM）**

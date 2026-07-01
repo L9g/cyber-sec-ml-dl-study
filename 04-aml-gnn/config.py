@@ -22,7 +22,7 @@ LABEL_UNKNOWN = 3
 
 
 def seed_everything(seed: int = SEED) -> None:
-    """统一设种子。MVP 只需 numpy/random；加 GNN 时再扩展 torch。"""
+    """统一设种子。numpy/random 必设；torch 若已装则一并设（GNN 用）。"""
     import os
     import random
 
@@ -31,3 +31,11 @@ def seed_everything(seed: int = SEED) -> None:
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
+
+    try:  # torch 是 Reference 档（GNN）才装的可选依赖
+        import torch
+
+        torch.manual_seed(seed)
+        torch.use_deterministic_algorithms(True, warn_only=True)
+    except ImportError:
+        pass

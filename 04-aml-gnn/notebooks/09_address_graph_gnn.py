@@ -182,7 +182,10 @@ def _(mo):
 @app.cell
 def _(GraphSAGE, MLP, X, ev, lgb, np, train_eval,
       ei_full, ei_train, test_mask, train_mask, x, y):
-    # GBDT 层（无图，复现 nb06 原生 actor）——用原始特征，树对标准化不敏感
+    # GBDT 层（无图）——用原始特征，树对标准化不敏感。
+    # ⚠️ 非 nb06 原生 actor 的精确复现：这里为与两个 NN 层（BCEWithLogitsLoss pos_weight）
+    # 公平对照而加了 scale_pos_weight（且 num_leaves 63 vs nb06 的 64）。加权后 PR-AUC≈0.246，
+    # 而 nb06 未加权版为 0.297（即 NATIVE_GBDT_REF，作外部参照用）——两者是不同配置，勿当同一数。
     ytr = y[train_mask].numpy(); yte = y[test_mask].numpy()
     spw = (len(ytr) - ytr.sum()) / max(ytr.sum(), 1.0)
     gbm = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63,

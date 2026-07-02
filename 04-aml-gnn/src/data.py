@@ -69,6 +69,41 @@ def actor_participation(include_outputs: bool = True, raw_dir: Path | None = Non
     return pd.concat([inp, out], ignore_index=True)
 
 
+def load_addr_addr(
+    raw_dir: Path | None = None,
+    *,
+    drop_self_loops: bool = False,
+    dedup: bool = False,
+) -> pd.DataFrame:
+    """地址→地址有向边（input_address → output_address），静态坍缩图。
+
+    ⚠️ **无时间列**：地址图是聚合的静态图，每条边不带时间步（与交易图不同——
+    交易图每笔交易恰有一个 Time step，边 Δt=0 恒成立）。地址的"时间"须另从
+    wallets_features 的活动时间推（见 `address_first_step`）。
+    原始文件含自环（45,981）与完全重复边（84,620）——是否清洗留给调用方：
+    - drop_self_loops=True 去 input==output 的自环。
+    - dedup=True 去完全重复的 (input, output) 有向边。
+    建 GNN 张量前一般两者都开；结构 EDA 想报原始计数则都关（默认）。
+    """
+    df = pd.read_csv(_p("AddrAddr_edgelist.csv", raw_dir))
+    if drop_self_loops:
+        df = df[df["input_address"] != df["output_address"]]
+    if dedup:
+        df = df.drop_duplicates(["input_address", "output_address"])
+    return df.reset_index(drop=True)
+
+
+def address_first_step(wf: pd.DataFrame) -> pd.Series:
+    """每地址的**首现时间步** = min(Time step)，作为地址级 temporal 口径的锚。
+
+    与 `native_actor_temporal_split` 用同一 first-appearance 逻辑：地址可跨多步
+    （实测 92.5% 单步），取最早活动步给它一个确定的时间坐标，用于
+    (a) group-aware temporal split（首现 ≤34 训 / >34 测），
+    (b) 度量地址图的边有多少跨时间步（Δfirst_step>0）——地址图相对交易图的**质变**。
+    """
+    return wf.groupby(ADDR_COL)[TIME_COL].min()
+
+
 def load_wallet_classes(raw_dir: Path | None = None) -> pd.DataFrame:
     """地址标签（address, class）。
 
@@ -157,6 +192,30 @@ def wallet_feature_columns(df: pd.DataFrame) -> list[str]:
     """地址特征列 = 全列去 address / Time step / 4 个绝对 block 索引（泄漏）。"""
     exclude = [ADDR_COL, TIME_COL, CLASS_COL, *WALLET_ABSOLUTE_BLOCK_FEATURES]
     return [c for c in df.columns if c not in exclude]
+
+
+def all_address_snapshots(
+    wf: pd.DataFrame, wc: pd.DataFrame, train_max_step: int = 34
+) -> pd.DataFrame:
+    """**全部**地址各取一行特征快照（含 unknown），用于在完整地址图上建 GNN 特征矩阵。
+
+    与 `native_actor_temporal_split` 的区别：那个只返回 labeled 的 train/test 两侧；
+    地址图 GNN 里 **unknown 节点也要进图传消息**（半监督利用结构、但不进 loss），
+    故须覆盖全部节点。快照规则与 `native_actor_temporal_split` **严格一致、避免泄漏**：
+      - 首现 ≤ train_max_step：取 ≤train_max_step 内的**最后**快照（训练期看不到未来）。
+      - 首现 > train_max_step（inductive 测试侧）：取全局最后快照。
+    返回一行一地址，含 wallet 特征列 + `first_step`（首现步）+ `class`（三态保留）。
+    ⚠️ `first_step` 是绝对时间代理，**不进特征**（同 Time step，建模时须显式剔除）。
+    """
+    wf = wf.sort_values([ADDR_COL, TIME_COL], kind="mergesort")
+    first_ts = wf.groupby(ADDR_COL)[TIME_COL].transform("min")
+    train_era = first_ts <= train_max_step
+    snap_tr = wf[train_era & (wf[TIME_COL] <= train_max_step)].groupby(ADDR_COL, as_index=False).last()
+    snap_te = wf[~train_era].groupby(ADDR_COL, as_index=False).last()
+    snap = pd.concat([snap_tr, snap_te], ignore_index=True)
+    fs = wf.groupby(ADDR_COL)[TIME_COL].min().rename("first_step")
+    snap = snap.merge(fs, on=ADDR_COL).merge(wc[[ADDR_COL, CLASS_COL]], on=ADDR_COL, how="left")
+    return snap
 
 
 def native_actor_temporal_split(

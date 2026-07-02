@@ -91,6 +91,29 @@ def test_native_actor_split_no_leakage_and_last_snapshot():
     assert tr["address"].is_unique and te["address"].is_unique
 
 
+def test_address_first_step_is_min_timestep():
+    fs = d.address_first_step(_toy_wallets())
+    # a 跨 30/35 → 首现 30；d 跨 36/38 → 36；单步地址取自身
+    assert fs["a"] == 30 and fs["b"] == 32 and fs["c"] == 40 and fs["d"] == 36 and fs["e"] == 33
+    # 与 native_actor_temporal_split 同口径：首现 ≤34 → train 侧（a,b,e），>34 → test 侧（c,d）
+    assert (fs <= 34).sum() == 3 and (fs > 34).sum() == 2
+
+
+def test_all_address_snapshots_covers_unknown_and_matches_native_split():
+    wf, wc = _toy_wallets(), _toy_wallet_classes()
+    snap = d.all_address_snapshots(wf, wc, train_max_step=34)
+    g = snap.set_index("address")
+    # 覆盖全部 5 地址（含 unknown e，native split 会丢掉它）
+    assert sorted(snap["address"]) == ["a", "b", "c", "d", "e"]
+    # 快照选取：a 首现≤34 取 ≤34 最后(ts30,g1=0.1)；d 首现>34 取全局最后(ts38,0.8)；e unknown 取 ts33(0.5)
+    assert g.loc["a", "g1"] == 0.1 and g.loc["d", "g1"] == 0.8 and g.loc["e", "g1"] == 0.5
+    assert g.loc["a", "first_step"] == 30 and g.loc["d", "first_step"] == 36
+    # labeled 子集与 native_actor_temporal_split 的快照**一致**（同口径、无分叉）
+    tr, te = d.native_actor_temporal_split(wf, wc, 34)
+    assert g.loc["a", "g1"] == float(tr.loc[tr.address == "a", "g1"].iloc[0])
+    assert g.loc["d", "g1"] == float(te.loc[te.address == "d", "g1"].iloc[0])
+
+
 def test_log_experiment_upsert_idempotent(tmp_path):
     csv = tmp_path / "exp.csv"
     base = {"experiment": "tx_baseline", "task": "transaction", "split": "temporal",

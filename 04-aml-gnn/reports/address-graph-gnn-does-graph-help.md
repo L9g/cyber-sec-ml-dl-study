@@ -18,24 +18,33 @@ strict inductive split(首现 ≤34 训 / >34 测)、51 维地址特征、测试
 
 | 层 | 特征 | 图消息传递 | PR-AUC | recall@1% |
 |---|---|---|---|---|
-| GBDT (LightGBM) | 51 维 | ✗ | 0.246 | 0.080 |
+| GBDT (LightGBM, **未加权**) | 51 维 | ✗ | 0.315 | 0.111 |
+| GBDT (LightGBM, 加权) | 51 维 | ✗ | 0.246 | 0.080 |
 | MLP | 同上 | ✗ | 0.346 | 0.135 |
 | GraphSAGE | 同上 | ✓ | **0.361** | 0.145 |
 
-两个关键差值:
+四个关键差值:
 
 - **纯消息传递增益 = SAGE − MLP = +0.015**(图**确有**微弱正信号,非零、非翻盘)。
-- **NN vs 树 = MLP − GBDT = +0.100**(注意**符号**:地址图上 NN **赢**树)。
+- **⭐ 真实 NN vs 树反转 = MLP − 未加权 GBDT = +0.031**(注意**符号**:地址图上 NN **赢**树,
+  但幅度**小**——用**同口径未加权**基准才是诚实数)。
+- **⚠️ 类别加权非免费 = 未加权 − 加权 GBDT = +0.069**:排序度量(PR-AUC)下给 GBDT 加
+  `scale_pos_weight` 反而**牺牲排序**(0.315→0.246)。若像旧稿那样拿**加权** GBDT 当基准,
+  「反转」会被虚报成 +0.100——**三倍于真实值**。这本身是一条方法学教训(见 §4 末「方法学盒子」)。
+- **✅ 反转经调参守门**:未加权 GBDT 12 组网格(num_leaves × min_child_samples × n_estimators)
+  最优 **0.322**(num_leaves=63/min_child_samples=100/n_estimators=300)**仍 < MLP 0.346**(gap +0.024)
+  → 「NN 微赢树」**不是 GBDT 欠调的假象**,反转对超参稳(`test_reversal_survives_gbdt_tuning` 断言守护)。
 
-**⭐ 与交易图(nb07)的赢家反转**——同一批人、同一套框架,两张图上「树 vs 神经网络」的赢家反过来:
+**⭐ 与交易图(nb07)的赢家反转**——同一批人、同一套框架,两张图上「树 vs 神经网络」的赢家反过来
+(地址图侧用**未加权** GBDT,与 nb07 口径一致):
 
 | | GBDT | MLP | GraphSAGE | 谁赢 | 图增益 |
 |---|---|---|---|---|---|
 | 交易图(nb07) | **0.813** | 0.624 | 0.660 | **树赢** | +0.036 |
-| 地址图(nb09) | 0.246 | 0.346 | **0.361** | **NN 赢** | +0.015 |
+| 地址图(nb09) | 0.315 | 0.346 | **0.361** | **NN 微赢** | +0.015 |
 
-读法:**「谁赢」高度依赖数据形态,没有普适答案**;但**两张图上消息传递都只是微弱正增益**,
-「图 > 表格不自动成立」被两种图各证一次。
+读法:**「谁赢」高度依赖数据形态,没有普适答案**;地址图上 NN 只**微弱**领先未加权树(+0.031),
+且**两张图上消息传递都只是微弱正增益**——「图 > 表格不自动成立」被两种图各证一次。
 
 **⭐ 主线不变**:即便上了 nb08 证实有跨期边(~19.7%)的连通地址图,SAGE 0.361 仍远低于
 tx 投影参照 0.74(见 [native-actor-vs-projection.md](native-actor-vs-projection.md))——
@@ -192,11 +201,14 @@ lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63,
    模型会走捷径背「晚期更干净」这种**不可迁移**先验(EDA 实测 base rate 11.58%→6.5% 在漂移),部署到新时段就废——这是防泄漏。
 3. **`scale_pos_weight` 只在 nb09 出现——为三层对照的公平**。两个 NN 用 `BCEWithLogitsLoss(pos_weight=...)`
    给正样本加权;为让树站同一起跑线,nb09 给 GBDT 补上对等的 `scale_pos_weight`。
+   **但同时保留一条未加权 GBDT(spw=1)作诚实基准**——因为加权在排序度量下有害(见下方方法学盒子),
+   「真实 NN vs 树反转」必须用未加权基准算。另跑 12 组未加权网格做**调参守门**(证反转非欠调假象)。
 
-> **⚠️ 诚实注脚**:正因加了 `scale_pos_weight`(还有 `num_leaves` 63 vs 64 微差),nb09 的 GBDT 拿 **0.246**,
-> 而 nb06 那个**未加权**的原生 actor GBDT 是 **0.297**(即代码里 `NATIVE_GBDT_REF`,作外部参照)。
-> **两者是不同配置,勿当同一数**——这不改变任何结论(都远低于 0.74、图增益都小),但严格说 0.246≠0.297。
-> nb09 第 185 行注释已就此澄清。
+> **⚠️ 诚实注脚**:nb09 现在**本节同群体**同时跑两条 GBDT——加权(`scale_pos_weight`)拿 **0.246**,
+> **未加权**(`num_leaves` 等其余全同)拿 **0.315**。**同一批测试地址、只差一个加权开关** → 这才是干净的
+> 「加权成本」对照(0.315→0.246,净亏 **0.069**)。另有 nb06 的未加权原生 actor GBDT **0.297**
+> (代码 `NATIVE_GBDT_REF`)——它是**不同 split/群体**的跨 notebook 交叉核对,与本节 0.315 接近但**非同一数**,
+> 别混用。结论不因这些区分而变(都远低于 0.74、图增益都小)。
 
 ### 方法学盒子:排序度量(PR-AUC)下,类别加权为什么不是「免费的」
 
@@ -212,11 +224,11 @@ w 是正常数 → 这是**保序**变换 → 样本相对顺序不变 → **PR-
 
 **现实层(却动了)**:加权**不是**训练完的事后重标定,而是从第一步就介入的**训练过程干预**——把模型推到一个**结构/参数都不同的解**,新旧解**不再互为单调变换** → 排序变、PR-AUC 变。**树尤其剧烈**:`scale_pos_weight` 缩放正样本的梯度/Hessian → 每一次「选哪个特征、切在哪」的分裂决策都变 → 长出一棵**结构完全不同**的树(不是「同一棵树、叶子值整体缩放」);而且叶子桶的并列结构被重排,PR-AUC 恰恰对队首并列最敏感。NN 温和一点但同样非凸:`pos_weight` 放大正类梯度 → 走到**不同的局部极小**,排序照样变。
 
-**实测**:地址图正类极稀(5.3%)+ 严格 inductive(测试是没见过的新地址、分布偏移),加权把树的目标从「整体排序好」扭向「别漏正样本」、选更粗糙泛化更差的分裂 → 队首纯度掉 → PR-AUC **0.297 → 0.246(净亏)**;对 NN 则常**净赚**(稀有正类下稳住优化、别被多数类淹没)。
+**实测**:地址图正类极稀(5.3%)+ 严格 inductive(测试是没见过的新地址、分布偏移),加权把树的目标从「整体排序好」扭向「别漏正样本」、选更粗糙泛化更差的分裂 → 队首纯度掉 → PR-AUC **0.315 → 0.246(净亏 0.069,本节同群体同口径实测)**;对 NN 则常**净赚**(稀有正类下稳住优化、别被多数类淹没)。
 
 **纪律(带走这两条)**:
 1. **排序度量下别无脑加类别权重**——那是「分类阈值时代」的习惯,错配到 ranking 上轻则纯属扰动、重则有害(呼应根 `CLAUDE.md`「PR-AUC 优先 / 报曲线不报单点」)。
-2. **「公平对照」本身有副作用**:为三层对齐而给树加权,扭曲了树的真实水平 → 必须保留**未加权 0.297** 作诚实参照,否则「NN 赢树 +0.100」有一半是加权假象(真实只 **+0.049**)。
+2. **「公平对照」本身有副作用**:为三层对齐而给树加权,扭曲了树的真实水平 → 必须保留**未加权 0.315** 作诚实参照,否则「NN 赢树 +0.100」有**三分之二是加权假象**(真实反转只 **+0.031**)。
 
 ---
 
@@ -233,12 +245,12 @@ w 是正常数 → 这是**保序**变换 → 样本相对顺序不变 → **PR-
 - Shchur et al., *Pitfalls of Graph Neural Network Evaluation*, 2018(NeurIPS RRL workshop)——思想源头:实证很多 GNN 论文漏报 MLP,而 MLP 常逼近甚至超过 GNN。
 - Errica, Podda, Bacciu, Micheli, *A Fair Comparison of GNNs for Graph Classification*, 2020(ICLR)——structure-agnostic baseline,发现不少「增益」来自特征而非结构(与本项目「大头是 NN vs 树」同构)。
 - Hu et al., *Open Graph Benchmark (OGB)*, 2020(NeurIPS)——leaderboard 强制报 MLP 条目;repo 里每任务 `mlp.py`/`gnn.py` 并列。
-- Dwivedi et al., *Benchmarking Graph Neural Networks*, 2020/2023(JMLR)——标配 MLP 对照 + 结构消融。
+- Dwivedi et al., *Benchmarking Graph Neural Networks*, JMLR 24(43):1–48, 2023(arXiv:2003.00982, 2020)——标配 MLP 对照 + 结构消融。
 - You, Ying, Leskovec, *Design Space for GNNs*, 2020(NeurIPS)——把聚合/传播当可插拔维度做消融。
 
 **二、把「消息传递」正式拆成可插拔算子的架构论文(最贴近本设计)**
-- Gasteiger (原 Klicpera) et al., *Predict then Propagate (APPNP)*, 2019(ICLR)——把网络拆成 `MLP 预测` + `传播`,证明传播可加可减。本项目 `SAGE − MLP` 正是在量化这个「Propagate」项。
-- Wu et al., *Simplifying Graph Convolutional Networks (SGC)*, 2019(ICML)——剥掉非线性,单独分离传播贡献。
+- Gasteiger (原 Klicpera), Bojchevski, Günnemann, *Predict then Propagate: GNNs meet Personalized PageRank (APPNP)*, ICLR 2019(arXiv:1810.05997)——把网络拆成 `MLP 预测` + `传播`,证明传播可加可减。本项目 `SAGE − MLP` 正是在量化这个「Propagate」项。
+- Wu et al., *Simplifying Graph Convolutional Networks (SGC)*, ICML 2019(arXiv:1902.07153)——剥掉非线性,单独分离传播贡献。
 
 **三、最契合「图不自动赢」的一支:异配图(heterophily)**
 - Zhu et al., *Beyond Homophily in GNNs (H2GCN)*, 2020(NeurIPS)——消融里 MLP 在异配图上常胜 GNN。
@@ -246,8 +258,8 @@ w 是正常数 → 这是**保序**变换 → 样本相对顺序不变 → **PR-
 - 对 AML 尤其相关:欺诈网络往往**异配**(坏人故意混进好人堆、伪装成正常对手方)→ 解释了地址图上消息传递只 +0.015。
 
 **四、AML/fraud 领域实例(本项目已在这条线上)**
-- Weber et al., *Anti-Money Laundering in Bitcoin (Elliptic)*, 2019——同表放 LogReg/RF/MLP/GCN,自报 **RF > GCN**,是 tabular↔graph 对照原型。
-- Elmougy & Liu, *Elliptic++*, 2023——本项目数据集论文,也做 tabular vs graph 对照。
+- Weber et al., *Anti-Money Laundering in Bitcoin (Elliptic)*, KDD '19 Workshop on Anomaly Detection in Finance(arXiv:1908.02591)——同表放 LogReg/RF/MLP/GCN,自报 **RF > GCN**,是 tabular↔graph 对照原型。
+- Elmougy & Liu, *Demystifying Fraudulent Transactions and Illicit Nodes in the Bitcoin Network for Financial Forensics*（Elliptic++）, KDD '23, DOI [10.1145/3580305.3599803](https://doi.org/10.1145/3580305.3599803)(arXiv:2306.06108)——本项目数据集论文,也做 tabular vs graph 对照。
 - Deprez et al. SLR(97 篇综述)——「传统模型仍有竞争力」是这类对照的元分析。
 
 **五、可直接照看的 notebook/教程**:PyG 官方 examples(node classification 先 MLP 后 GCN)、Stanford CS224W(Leskovec)Colabs、OGB repo `examples/`(`mlp.py`+`gnn.py` 并列,最接近严格版)、DGL tutorials。
@@ -256,8 +268,11 @@ w 是正常数 → 这是**保序**变换 → 样本相对顺序不变 → **PR-
 归因逻辑对齐 **APPNP「predict-then-propagate」模块分解**,结论方向落在 **heterophily 那一支(图不自动赢)**。
 → 这个三层对照有文献背书、可辩护。
 
-> ⚠️ **引用待核**:上述标题/作者/会议/年份凭知识(cutoff 2026-01)给出,均为 2018–2023 经典、可信度高;
-> 但落入正式引用前,DOI/卷期建议逐条 WebSearch 核对(尤其 APPNP 作者改名 Klicpera→Gasteiger、Dwivedi benchmarking 的 JMLR 卷期)。
+> ✅ **引用已核**(2026-07-02 WebSearch 逐条核对):Weber(arXiv:1908.02591、KDD '19 AML workshop)、
+> Elmougy & Liu Elliptic++(DOI 10.1145/3580305.3599803、arXiv:2306.06108)、APPNP(arXiv:1810.05997、
+> 作者确为 Klicpera→Gasteiger 改名)、Dwivedi Benchmarking(JMLR 24(43):1–48, 2023、arXiv:2003.00982)、
+> SGC(arXiv:1902.07153)均已回填。其余方法学清单(Shchur/Errica/Hu/You/Zhu/Lim/Deprez)为标题级引用、
+> DOI 未逐一核——正式投稿/简历外发前建议补核。
 
 ---
 

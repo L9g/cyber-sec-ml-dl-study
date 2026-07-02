@@ -48,6 +48,7 @@ def _(mo):
 
     sys.path.insert(0, str(mo.notebook_dir().parent))
 
+    import itertools
     import numpy as np
     import pandas as pd
     import torch
@@ -68,7 +69,7 @@ def _(mo):
     PROJECTION_REF = 0.741    # nb04/06 tx 投影到 actor（被标签循环抬高，外部参照）
     return (
         DEVICE, EXPERIMENTS_CSV, F, LABEL_ILLICIT, NATIVE_GBDT_REF, PROJECTION_REF,
-        SAGEConv, d, ev, lgb, mo, nn, np, pd, seed_everything, torch,
+        SAGEConv, d, ev, itertools, lgb, mo, nn, np, pd, seed_everything, torch,
     )
 
 
@@ -182,56 +183,119 @@ def _(mo):
 @app.cell
 def _(GraphSAGE, MLP, X, ev, lgb, np, train_eval,
       ei_full, ei_train, test_mask, train_mask, x, y):
-    # GBDT 层（无图）——用原始特征，树对标准化不敏感。
-    # ⚠️ 非 nb06 原生 actor 的精确复现：这里为与两个 NN 层（BCEWithLogitsLoss pos_weight）
-    # 公平对照而加了 scale_pos_weight（且 num_leaves 63 vs nb06 的 64）。加权后 PR-AUC≈0.246，
-    # 而 nb06 未加权版为 0.297（即 NATIVE_GBDT_REF，作外部参照用）——两者是不同配置，勿当同一数。
+    # GBDT 层（无图）——用原始特征，树对标准化不敏感。跑**两条**：
+    #  • 加权（scale_pos_weight）：与两个 NN 层的 BCEWithLogitsLoss(pos_weight) 对齐 → 三层可比。
+    #  • 未加权（spw=1）：与 nb06 原生 actor 同口径（num_leaves 除外）→ 才是「真实 NN vs 树」的诚实基准。
+    # ⚠️ 排序度量（PR-AUC）下类别加权非免费：加权会牺牲排序、把 GBDT 拉低（下方表格量化）。
+    #    与 nb06 的 NATIVE_GBDT_REF≈0.297 仅作**跨 notebook 交叉核对**——split/群体不同（nb09 是地址图
+    #    诱导子图 mask、n_test≈9.2 万），不是同一数，别混用。
     ytr = y[train_mask].numpy(); yte = y[test_mask].numpy()
+    Xtr, Xte = X[train_mask.numpy()], X[test_mask.numpy()]
+
+    def _fit_gbdt(spw_val):
+        m = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63,
+                               scale_pos_weight=spw_val, random_state=42, n_jobs=8, verbose=-1)
+        m.fit(Xtr, ytr)
+        s = m.predict_proba(Xte)[:, 1]
+        return {"pr_auc": ev.pr_auc(yte, s), "base_rate": ev.base_rate(yte),
+                "recall_at_1pct": ev.recall_at_budget(yte, s, 0.01),
+                "recall_at_5pct": ev.recall_at_budget(yte, s, 0.05), "score": s}
+
     spw = (len(ytr) - ytr.sum()) / max(ytr.sum(), 1.0)
-    gbm = lgb.LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=63,
-                             scale_pos_weight=spw, random_state=42, n_jobs=8, verbose=-1)
-    gbm.fit(X[train_mask.numpy()], ytr)
-    s_gbdt = gbm.predict_proba(X[test_mask.numpy()])[:, 1]
-    res_gbdt = {"pr_auc": ev.pr_auc(yte, s_gbdt), "base_rate": ev.base_rate(yte),
-                "recall_at_1pct": ev.recall_at_budget(yte, s_gbdt, 0.01),
-                "recall_at_5pct": ev.recall_at_budget(yte, s_gbdt, 0.05), "score": s_gbdt}
+    res_gbdt = _fit_gbdt(spw)        # 加权：与 NN pos_weight 对齐，进三层对照
+    res_gbdt_unw = _fit_gbdt(1.0)    # 未加权：nb06 native 口径，做「真实反转」基准
 
     d_in = x.shape[1]
     res_mlp = train_eval(MLP(d_in), x, ei_train, ei_full, y, train_mask, test_mask)   # 无图
     res_sage = train_eval(GraphSAGE(d_in), x, ei_train, ei_full, y, train_mask, test_mask)  # 有图
-    return res_gbdt, res_mlp, res_sage
+    return res_gbdt, res_gbdt_unw, res_mlp, res_sage
 
 
 @app.cell
-def _(NATIVE_GBDT_REF, PROJECTION_REF, mo, pd, res_gbdt, res_mlp, res_sage):
+def _(NATIVE_GBDT_REF, PROJECTION_REF, mo, pd, res_gbdt, res_gbdt_unw, res_mlp, res_sage):
     br = res_gbdt["base_rate"]
     tbl = pd.DataFrame([
-        {"model": "LightGBM (GBDT, no graph)", "PR-AUC": round(res_gbdt["pr_auc"], 4),
+        {"model": "LightGBM (GBDT, unweighted)", "PR-AUC": round(res_gbdt_unw["pr_auc"], 4),
+         "recall@1%": round(res_gbdt_unw["recall_at_1pct"], 3), "recall@5%": round(res_gbdt_unw["recall_at_5pct"], 3)},
+        {"model": "LightGBM (GBDT, weighted)", "PR-AUC": round(res_gbdt["pr_auc"], 4),
          "recall@1%": round(res_gbdt["recall_at_1pct"], 3), "recall@5%": round(res_gbdt["recall_at_5pct"], 3)},
         {"model": "MLP (NN, no graph)", "PR-AUC": round(res_mlp["pr_auc"], 4),
          "recall@1%": round(res_mlp["recall_at_1pct"], 3), "recall@5%": round(res_mlp["recall_at_5pct"], 3)},
         {"model": "GraphSAGE (NN + message passing)", "PR-AUC": round(res_sage["pr_auc"], 4),
          "recall@1%": round(res_sage["recall_at_1pct"], 3), "recall@5%": round(res_sage["recall_at_5pct"], 3)},
     ])
-    mp_gain = res_sage["pr_auc"] - res_mlp["pr_auc"]      # 纯消息传递增益
-    vs_gbdt = res_sage["pr_auc"] - res_gbdt["pr_auc"]     # 图 NN vs 强 GBDT
-    gap_to_proj = PROJECTION_REF - res_sage["pr_auc"]     # 距 tx 投影天花板
+    mp_gain = res_sage["pr_auc"] - res_mlp["pr_auc"]              # 纯消息传递增益
+    vs_gbdt = res_sage["pr_auc"] - res_gbdt["pr_auc"]            # 图 NN vs 加权 GBDT
+    gap_to_proj = PROJECTION_REF - res_sage["pr_auc"]           # 距 tx 投影天花板
+    reversal_true = res_mlp["pr_auc"] - res_gbdt_unw["pr_auc"]  # ⭐ 真实 NN vs 树反转（同口径未加权基准）
+    weight_cost = res_gbdt_unw["pr_auc"] - res_gbdt["pr_auc"]   # 类别加权在排序度量上的净损
 
     mo.md(f"""
     测试集 illicit base rate = **{br:.1%}**（PR-AUC 随机基线）。同 inductive split、同 51 特征：
 
     {mo.ui.table(tbl, selection=None)}
 
-    外部参照：原生 actor GBDT ≈ **{NATIVE_GBDT_REF}**（nb06）／ tx 投影 ≈ **{PROJECTION_REF}**（nb04/06）。
+    外部参照：原生 actor GBDT ≈ **{NATIVE_GBDT_REF}**（nb06，跨 notebook 交叉核对，非同群体）／ tx 投影 ≈ **{PROJECTION_REF}**（nb04/06）。
 
+    - **⭐ 真实 NN vs 树反转 = MLP − 未加权 GBDT = {reversal_true:+.4f}**（同口径未加权基准，才是诚实数）。
+    - **⚠️ 类别加权非免费 = 未加权 − 加权 GBDT = {weight_cost:+.4f}**：排序度量（PR-AUC）下加权牺牲排序、
+      把 GBDT 从 {res_gbdt_unw['pr_auc']:.4f} 压到 {res_gbdt['pr_auc']:.4f}；用加权 GBDT 当基准会**放大**反转。
     - **纯消息传递增益 = SAGE − MLP = {mp_gain:+.4f}**（唯一差别是图）。
-    - **图 NN vs 本节 GBDT = SAGE − LightGBM = {vs_gbdt:+.4f}**。
-    - **距 tx 投影天花板 = {gap_to_proj:+.4f}**。
+    - **图 NN vs 加权 GBDT = SAGE − LightGBM(w) = {vs_gbdt:+.4f}**；**距 tx 投影天花板 = {gap_to_proj:+.4f}**。
     - {'✅ 消息传递有正增益' if mp_gain > 0.01 else '⚠️ 消息传递增益≈0/为负'}；
-      {'✅ 图 NN 追平/超过 GBDT' if vs_gbdt > -0.01 else '⚠️ 图 NN 仍不及 GBDT'}；
+      {'✅ NN 赢过未加权树（反转成立）' if reversal_true > 0.01 else '⚠️ NN 未能赢过未加权树（反转不成立）'}；
       {'但仍**远低于** tx 投影 0.74' if gap_to_proj > 0.1 else '且已逼近 tx 投影'}。
     """)
-    return br, gap_to_proj, mp_gain, vs_gbdt
+    return br, gap_to_proj, mp_gain, reversal_true, vs_gbdt, weight_cost
+
+
+@app.cell
+def _(EXPERIMENTS_CSV, X, ev, itertools, lgb, res_mlp, test_mask, train_mask, y):
+    # 待办2：未加权 GBDT 小网格敏感性——回答审计质疑「NN 赢树是不是因为 GBDT 欠调？」
+    # 若调到最优的树仍 < MLP → 反转稳；若追平/反超 → 如实改结论（下方按实际数字判定）。
+    _ytr = y[train_mask].numpy(); _yte = y[test_mask].numpy()
+    _Xtr, _Xte = X[train_mask.numpy()], X[test_mask.numpy()]
+    _grid = {"num_leaves": [31, 63, 127], "min_child_samples": [20, 100], "n_estimators": [300, 600]}
+    gbdt_best = {"pr_auc": -1.0}
+    for _nl, _mcs, _ne in itertools.product(_grid["num_leaves"], _grid["min_child_samples"], _grid["n_estimators"]):
+        _m = lgb.LGBMClassifier(n_estimators=_ne, learning_rate=0.05, num_leaves=_nl,
+                                min_child_samples=_mcs, random_state=42, n_jobs=8, verbose=-1)
+        _m.fit(_Xtr, _ytr)
+        _s = _m.predict_proba(_Xte)[:, 1]
+        _pa = ev.pr_auc(_yte, _s)
+        if _pa > gbdt_best["pr_auc"]:
+            gbdt_best = {"pr_auc": _pa, "num_leaves": _nl, "min_child_samples": _mcs, "n_estimators": _ne,
+                         "recall_at_1pct": ev.recall_at_budget(_yte, _s, 0.01), "base_rate": ev.base_rate(_yte)}
+    tuned_gap_to_mlp = res_mlp["pr_auc"] - gbdt_best["pr_auc"]   # 调参后树仍与 MLP 的差
+    ev.log_experiment(
+        {
+            "experiment": "addr_gbdt_tuned", "task": "address", "split": "temporal_inductive",
+            "model": "LightGBM-addr-unw-tuned",
+            "pr_auc": round(gbdt_best["pr_auc"], 4), "base_rate": round(gbdt_best["base_rate"], 4),
+            "pr_auc_lift": round(gbdt_best["pr_auc"] - gbdt_best["base_rate"], 4),
+            "recall_at_1pct": round(gbdt_best["recall_at_1pct"], 4), "n_test": int(len(_yte)),
+            "note": f"unweighted GBDT 12-cell grid best (num_leaves={gbdt_best['num_leaves']}, "
+                    f"min_child_samples={gbdt_best['min_child_samples']}, n_estimators={gbdt_best['n_estimators']}); "
+                    "robustness check: is NN>tree reversal an under-tuning artifact?",
+        },
+        EXPERIMENTS_CSV,
+    )
+    return gbdt_best, tuned_gap_to_mlp
+
+
+@app.cell(hide_code=True)
+def _(gbdt_best, mo, res_mlp, tuned_gap_to_mlp):
+    mo.md(f"""
+    ### 1b. GBDT 调参敏感性（守住「NN 赢树」）
+
+    未加权 LightGBM 12 组网格（num_leaves × min_child_samples × n_estimators）最优：
+    **PR-AUC = {gbdt_best['pr_auc']:.4f}**（num_leaves={gbdt_best['num_leaves']}、
+    min_child_samples={gbdt_best['min_child_samples']}、n_estimators={gbdt_best['n_estimators']}）。
+
+    - **调参后树 vs MLP = {tuned_gap_to_mlp:+.4f}**：
+      {'✅ 调到最优的 GBDT 仍**低于** MLP → 「地址图上 NN 赢树」不是欠调假象，结论稳。' if tuned_gap_to_mlp > 0.01 else '⚠️ 调参后 GBDT 追平/反超 MLP → 反转不稳，须据实收紧「NN 赢树」措辞（勿 over-claim）。'}
+    """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -257,8 +321,9 @@ def _(gap_to_proj, mo, mp_gain, vs_gbdt):
 
 
 @app.cell
-def _(EXPERIMENTS_CSV, ev, res_gbdt, res_mlp, res_sage):
+def _(EXPERIMENTS_CSV, ev, res_gbdt, res_gbdt_unw, res_mlp, res_sage):
     for _name, _model, _r in [
+        ("gbdt_unweighted", "LightGBM-addr-unw", res_gbdt_unw),
         ("gbdt", "LightGBM-addr", res_gbdt),
         ("mlp", "MLP-addr-nograph", res_mlp),
         ("graphsage", "GraphSAGE-addrgraph", res_sage),
@@ -302,6 +367,25 @@ def _(PROJECTION_REF, res_sage):
     def test_graph_stays_below_projection_ceiling():
         # ⭐ 主线诚实断言：即便上图，仍显著低于 tx 投影参照（0.74）——图修不了标签口径
         assert res_sage["pr_auc"] < PROJECTION_REF - 0.1
+
+    return
+
+
+@app.cell
+def _(res_gbdt, res_gbdt_unw):
+    def test_class_weighting_not_free_on_ranking():
+        # 方向性：排序度量（PR-AUC）下类别加权不涨分——未加权 GBDT ≥ 加权 GBDT（允许极小噪声）
+        assert res_gbdt_unw["pr_auc"] >= res_gbdt["pr_auc"] - 0.005
+
+    return
+
+
+@app.cell
+def _(gbdt_best, res_mlp):
+    def test_reversal_survives_gbdt_tuning():
+        # 守反转：调到最优的未加权 GBDT 仍不超过 MLP（方向性带 margin）——「NN 赢树」非欠调假象。
+        # 若此断言失败，是「反转不稳、须据实改结论」的信号，不要放宽 margin 掩盖。
+        assert gbdt_best["pr_auc"] < res_mlp["pr_auc"] + 0.01
 
     return
 

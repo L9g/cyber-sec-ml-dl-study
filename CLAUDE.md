@@ -4,8 +4,11 @@
 背景/理由在 `docs/` 与 auto-memory，本文件只列**要遵守什么**。
 
 ## 工作区
-- 会话 cwd = 工作区根 `/home/l9g/works/cyber-sec`；下辖 4 个项目（01-honest-nids / 注入防御 / SIEM / AML）。
-- Claude Code skills 放**工作区根** `.claude/skills/`，不要埋进子 repo（从根启动可能不被发现）。
+- **启动深度 = 工作范围**：做某个项目就从该项目目录启动（`cd 04-aml-gnn`）——CLAUDE.md/settings/skills 沿 cwd 向上继承，这样同时拿到 root 规则 + 项目 `CLAUDE.md` + 项目 `.venv`；仅跨项目 meta 工作（组合规划/叙事统筹）才从工作区根 `/home/l9g/works/cyber-sec` 启动。**别习惯性从根启动做单项目**——会静默丢掉该项目的 `CLAUDE.md` 与 env。
+- **记忆按启动目录寻址**（不向上继承）：通用「宪法」记忆（user/feedback/方法学/组合规划）作 Tier-1 脊柱 symlink 进各项目；项目专属记忆（status/数据源/项目 ref）留各自库、不外泄。
+- **Python env per 项目**：每个项目自带 `.venv` + `pyproject.toml` + `uv.lock`（用 `uv`），独立锁定、可单独复现；工作区根不建 env。跨项目栈本就冲突（P4 的 CPU-torch/numpy vs P2/P5 的 LLM-agent 栈）。
+- 下辖项目：01-honest-nids / 02 注入防御 / 03 SIEM / 04-aml-gnn / 05-ithuriel（安全+合规 Agent）。
+- Claude Code skills 放**工作区根** `.claude/skills/`，不要埋进子 repo——沿 cwd 向上继承，从项目目录启动仍可发现；埋进子 repo 则从根或别项目启动时找不到。
 
 ## 评估指标
 - 不平衡安全数据（入侵/欺诈）**优先 PR-AUC**，ROC-AUC 仅作辅助。

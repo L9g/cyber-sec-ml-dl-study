@@ -1,0 +1,13 @@
+[project]
+name = "ithuriel"
+version = "0.0.1"
+description = "Ithuriel — 安全+合规 Agent（红队/保证 anchor）。阶段一：borrowed backend = AgentDojo（PI 切片）。"
+requires-python = ">=3.11"
+dependencies = [
+    # borrowed base：AgentDojo（mock 执行、可复现 + 原生 adaptive attack）。pin 死版本，可复现。
+    "agentdojo==0.1.35",
+]
+
+[tool.uv]
+# 这是一个"跑得起来的项目环境"，不是要发布的包——别让 uv 尝试构建/安装它自身。
+package = false

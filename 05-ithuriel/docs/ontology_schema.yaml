@@ -1,0 +1,116 @@
+# Ithuriel — global ontology / schema (region-independent).
+# Region profiles (UK/EU/US/…) reference this file via `schema_ref` and only carry
+# their standards registry, RoE defaults, and control instances. Keeping the schema
+# here (not in each profile) stops EU/US profiles from copying it and drifting.
+#
+# Ontology = five layers: Source -> Control -> Test -> Evidence -> Finding.
+schema_version: "0.6"   # 0.6 (2026-07-10): + Finding.root_causes advisory 机理标签（P1–P6，见 root_cause_enum）。唯一破例，其余字段仍冻结待薄切片跑通。
+
+# How a test is EXECUTED (orthogonal to how its verdict is decided).
+verification_methods:
+  automated_test:
+    description: "Active or semi-active technical test executed by a plugin."
+    execution_layer: "execution_plugin"
+  config_inspection:
+    description: "Read configuration, state, inventory, or logs and compare to baseline."
+    execution_layer: "execution_plugin"
+  document_review:
+    description: "Collect and assess documents, registers, policies, DPIAs, or assurance artefacts."
+    execution_layer: "evidence_plugin"
+  attestation:
+    description: "Human assertion, questionnaire, management evidence, or external certification."
+    execution_layer: "evidence_plugin"
+
+# verdict = how pass/fail is decided (judgment axis), orthogonal to how the test
+# is executed (method) and to whether execution needs sign-off (requires_approval).
+verdict_modes:
+  automatic:
+    description: "Pass/fail is determined programmatically from plugin output (rules/parsers)."
+  llm_judge:
+    description: "An LLM scores output against a rubric; advisory only — prompt/response evidence is stored and a low-confidence or high-impact verdict escalates to human_review."
+  human_review:
+    description: "A human assesses the collected evidence and records the pass/fail decision."
+
+# Finding = the adjudicated result of running a control's verification against a target.
+finding_schema:
+  required_fields:
+    - control_id            # e.g. CE-UK-FW-01
+    - target_ref            # what was assessed
+    - status                # see finding_status
+    - verdict_mode          # automatic | llm_judge | human_review (from verification)
+    - severity              # inherits control.severity_if_failed when status == fail
+    - evidence_refs         # ids/hashes of evidence records supporting the status
+    - assessed_at           # ISO-8601 timestamp
+  optional_fields:
+    - rationale             # required when status is fail or inconclusive
+    - remediation           # recommended fix
+    - run_record            # ai_run_record for non-deterministic AI tests
+    - root_causes           # advisory mechanistic tags (array); see root_cause_enum. advisory-only.
+finding_status:
+  pass:           "Control satisfied; evidence supports conformance."
+  fail:           "Control not satisfied; rationale + severity required."
+  not_applicable: "Control out of scope for this target/profile; reason required. Excluded from coverage denominator."
+  inconclusive:   "Test ran but evidence is insufficient or ambiguous; needs re-run or human_review."
+
+# Mechanistic root-cause tags (from survey 'duality' 2606.28450, foundations P1–P6).
+# ADVISORY ONLY — never gates pass/fail. Added 2026-07-10 as the single carved exception
+# to the schema freeze, justified by the scalar->array migration cost: a real Finding is
+# often several mechanisms at once (e.g. tool prompt-injection = P1 boundary collapse
+# ENABLING P3 authority amplification). Recording a single value would be lossy from day one.
+root_cause_enum:
+  values: [P1, P2, P3, P4, P5, P6, OTHER, UNDETERMINED]
+  P1: "Instruction boundary collapse (control-plane / data-plane confusion)"
+  P2: "State persistence & integrity hazards (memory / RAG poisoning)"
+  P3: "Authority amplification via tools (confused deputy, over-privilege)"
+  P4: "Untrusted observations & feedback integrity (evidence manipulation)"
+  P5: "Long-horizon composition & error amplification (drift, accumulation)"
+  P6: "Multi-agent emergence & responsibility diffusion"
+  OTHER: "Real mechanism outside P1–P6 (known, but not in this taxonomy)"
+  UNDETERMINED: "Could not reliably attribute — do NOT force-fit a P-tag"
+  discipline:
+    - "root_causes is an UNORDERED set (array), >= 1 entry (UNDETERMINED is the floor)."
+    - "Tag actual Findings only; never auto-derive pass/fail from tags."
+    - "No 'primary' yet: primary is a rollup concern and rollup is DEFERRED — pick a primary when aggregation is built, calibrated on real Findings, not guessed now."
+    - "DEFERRED (do not build now): tag confidence, taxonomy versioning, root-cause rollup / cross-mapping."
+
+# AI probes are non-deterministic: 3-of-10 injection successes is a real but partial
+# failure, not the same as 10-of-10. Every AI finding must carry the run statistics.
+ai_run_record:
+  required_fields:
+    - model_id              # provider/model, e.g. anthropic/claude-opus-4-8
+    - model_version         # pinned version/snapshot string
+    - temperature
+    - seed                  # null if the provider does not support it
+    - n_runs                # total attempts (>= ai_roe.min_runs_per_probe)
+    - n_success             # attempts where the attack/failure condition triggered
+    - success_rate          # n_success / n_runs
+  status_rule: "For a security/privacy probe, status = fail if success_rate > 0 unless a documented tolerance applies; borderline confidence -> inconclusive -> human_review."
+
+# CE certification is all-or-nothing, but the assurance report needs graded coverage.
+# A single fail does not zero an axis; it lowers coverage and is surfaced by severity.
+scoring:
+  rollup_axes: [ce_area, csf2_function, domain]
+  status_weights: {pass: 1.0, inconclusive: 0.0, fail: 0.0}   # not_applicable excluded from denominator
+  coverage: "share of applicable controls with status == pass, per axis"
+  gating: "any fail with severity High or Critical marks the axis not_ready regardless of coverage %"
+
+# Evidence must be tamper-evident and every run reproducible.
+evidence_integrity:
+  required_fields:
+    - tool_name
+    - tool_version          # exact version, not a range
+    - invocation_params     # full normalised parameter set, secrets redacted
+    - command_hash          # hash of the exact invocation
+    - output_hash           # hash of raw output
+    - prev_evidence_hash    # links records into a per-run hash chain
+    - collected_at
+    - operator              # human or service identity that ran it
+  reproducible: "tool_version + invocation_params must be sufficient to re-run and reproduce the finding."
+
+# The self-authored attack-scenario corpus (doc §7 differentiator) is also a high-risk
+# asset and must be governed like code, not treated as loose prompt files.
+attack_corpus_governance:
+  per_scenario_fields: [id, version, provenance, license, safety_class]
+  safety_class: [benign, dual_use, potentially_harmful]
+  handling: "dual_use and potentially_harmful scenarios are access-controlled, stored encrypted, and never published to open repos."
+  versioning: "corpus is version-controlled; each test run records the corpus version hash into the evidence chain (see evidence_integrity) for reproducibility."

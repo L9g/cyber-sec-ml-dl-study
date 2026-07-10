@@ -1,0 +1,7 @@
+# 论文 PDF 是引用材料、体积大，不入 git（索引见 docs/papers/*Reading_List*.md）
+docs/papers/*.pdf
+
+# 原始数据不入 git（工作区数据治理硬约束：仅留 README + checksum）
+data/**
+!data/.gitkeep
+!data/**/README.md

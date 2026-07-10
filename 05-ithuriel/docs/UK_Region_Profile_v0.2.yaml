@@ -3,6 +3,12 @@
 # finding_status, ai_run_record, scoring, evidence_integrity, attack_corpus_governance)
 # live in ontology_schema.yaml. This file carries only the UK standards registry,
 # RoE defaults, and control instances.
+#
+# GATE-2 (reconcile at first fixture — see architecture-seams-D8.md #3): controls below bind
+# `verification.plugin: <tool_name>` directly, which couples a standard control to a specific
+# tool. Long-term shape = Test declares a CAPABILITY requirement; plugins register capabilities;
+# the planner matches. Migrate AI-AGENT-PI-01 to a capability requirement first when the AI
+# slice starts; other controls migrate as their slices begin (no need to convert all at once).
 schema_version: "0.5"
 schema_ref: ontology_schema.yaml
 

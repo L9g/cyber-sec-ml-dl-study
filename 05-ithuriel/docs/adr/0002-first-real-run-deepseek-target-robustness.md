@@ -47,5 +47,5 @@ ADR-0001 §待办 要求「真实模型在 bare/defended 各跑多次，才见 `
 - `D8_MODEL_IDENTITY`：`load_attack` 后覆盖 `attack.model_name`，堵「名字喂错」混淆。
 
 ## 待办
-- 把「measurement_valid ≠ powered」+ CI/underpowered gate 并入 `architecture-seams-D8.md`（同 ADR-0001 的 5 条 Gate-1 修正一批）。
-- 若要 defense delta：选可注入 target 跑方向 1。
+- ✅ **已并入**（2026-07-10，seams v1.2）：「measurement_valid ≠ powered」+ CI/underpowered gate 落 `architecture-seams-D8.md` §7 附；pipeline note §11 标「部分前移」。
+- 若要 defense delta：选可注入 target 跑方向 1（未做，独立成本决定）。

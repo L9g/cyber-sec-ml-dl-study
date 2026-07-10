@@ -20,6 +20,9 @@ Core positioning:
 - `docs/UK_Region_Profile_v0.2.yaml`: UK machine-readable region profile.
 - `docs/ontology_schema.yaml`: extracted ontology/schema definition.
 - `docs/papers/Agentic_Cyber_AI_Assurance_Reading_List.md`: curated reading list for agentic cyber, AI safety, and compliance.
+- `docs/architecture-seams-D8.md`: consensus draft for the minimum architectural seams/invariants that must surround the D8 thin slice without building a platform first.
+- `docs/Ithuriel_架构框图_v1_审阅结论.md`: review of the v1 architecture diagram; its original P0 module ordering has since been narrowed by the D8 seams discussion below.
+- `docs/D8_架构接缝与规划编码边界_讨论笔记.md`: discussion note combining the detailed seam review with the planning/coding/post-slice decision gates.
 
 ## Current Architecture Direction
 
@@ -81,6 +84,48 @@ Deferred until after the first end-to-end AI slice:
 - confidence and version governance for the P1-P6 taxonomy (lightweight tags are not deferred);
 - formal verification of the ActionPlan/task lifecycle state machine;
 - certification-grade claim boundaries, assessor independence, and accreditation design.
+
+## D8 Architecture-Seam Consensus and Review (2026-07-10)
+
+The architecture review initially proposed too many P0 machines before the first thin slice (PlanCompiler, RunOrchestrator, CoverageLedger, Claim Engine, etc.). That ordering was rejected as inconsistent with D8: first run the smallest end-to-end slice and let real data/error/operational friction shape later modules.
+
+Current guiding sentence:
+
+> Freeze seams before D8; do not build a platform. Let the thin slice determine which seams later grow into modules.
+
+Use three decision gates rather than treating every seam as a planning-time schema decision:
+
+1. **Planning gate — freeze meaning, boundaries, and validity:** product/claim scope; trust and side-effect boundaries; Executor/ModelExecutor as policy enforcement points; defense as target configuration; RawArtifact -> Observation -> TrialOutcome -> Finding semantic separation; trial/error/retry meanings; measurement validity; comparison/treatment rules; holdout independence; status vocabulary; evidence-integrity shape and explicit non-goals.
+2. **D8 implementation gate — freeze concrete protocols using real fixtures before persistence/API stability:** Action granularity and fields; canonical serialization/hash; backend method and ExecutionReceipt; capability descriptor; MeasurementContext structure; ComparisonSpec encoding; TrialOutcome enums/counters; detector implementation; calibration fixtures/thresholds; manifest/root algorithm; scope-gap record; target snapshot serialization. Record these with schema/ADR/golden fixtures/test vectors rather than inventing them entirely in planning.
+3. **Post-D8 gate — decide machines from friction:** PlanCompiler, RunOrchestrator, full CoverageLedger, ExperimentManager, Claim/Assurance Engine, Temporal/queues/workers, concurrency DAG, streaming/caching, final storage topology, OPA deployment form, Rust/Go, generalized compatibility, LLM judge, advanced statistics, signatures/timestamps/transparency logs.
+
+Planning-time seam invariants currently accepted:
+
+- Plugins never directly cause side effects; Executor and ModelExecutor are PEPs. Use preflight plus pre-dispatch checks and never trust an upstream check as sufficient.
+- Approval is scoped to an immutable, policy-relevant Action hash, not broad run-level privilege. Any policy-relevant mutation invalidates approval; dynamically proposed real side effects must be checked again.
+- Environment backends share an Action -> ExecutionReceipt + RawArtifactRef/AuditEventRef boundary. Backends must not directly create normalized Evidence or Findings.
+- Keep environment fidelity (AgentDojo mock / seeded tenant / customer sandbox) separate from model transport (local / remote API / simulated). A mock tool environment can still have real model-API cost and data egress.
+- Controls/tests request capabilities; adapters register capabilities. Do not make standards controls directly depend on tool/plugin identities.
+- Preserve RawArtifact -> Observation -> TrialOutcome -> aggregate Finding. Parsers never overwrite raw data; findings reference evidence, context, and rule versions.
+- Defense is a target variant/configuration and Ithuriel records the experiment variable/provenance rather than owning the evaluated defense as an internal evaluation module. Architectural separation improves but does not by itself eliminate assessor-independence concerns.
+- Discovery samples must receive independent confirmation/holdout; the sample that discovered an attack cannot also prove its stability.
+- Capture immutable MeasurementContext from day one. Normalization does not imply comparability.
+- A valid measurement (positive control present, bare ASR > 0) is necessary but not sufficient for statistical power: attach a confidence interval to any `security_delta` and mark it `underpowered` (do not assert a delta) when the bare and defended intervals overlap. Full CI/effect-size/power design stays parked; only this fail-closed honesty flag comes forward (ADR 0002, seams §7).
+- Evidence shape is per-Action content-addressed manifests aggregated into a run root; do not retain a global linear `prev_evidence_hash` chain as the long-term shape.
+- Emit a structured scope/gap statement with no generalized compliance claim for D8 (`assurance_level: none` at run/report scope, not as a Finding property).
+
+Outstanding seam corrections identified before `architecture-seams-D8.md` can be treated as final:
+
+- Bare/defended comparison cannot require raw MeasurementContext equality because `defense_hash` and the full target variant differ. Introduce a minimal ComparisonSpec: invariant fields must match exactly and the declared treatment field is allowed/required to differ. Separate `target_base_hash`, `defense_hash` (including a canonical bare/none value), and `target_variant_hash`.
+- Backend protocol should return execution facts/raw artifact references, not Evidence.
+- Trial accounting must distinguish `attack_success`, `attack_failure`, `execution_error`, `detector_error`, and invalid trials. Retries do not create new independent trials. Track at least attempted, valid, success, and error counts; insufficient valid trials cannot pass.
+- Separate instrument/harness validity, security outcome, and defense utility. A utility failure is a valid adverse defense result, not an invalid measurement. Findings from an invalid measurement must not enter pass/fail rollups.
+- Clarify Action authorization granularity using a real AgentDojo trajectory fixture before implementing the Executor path. A likely seed is bounded ProbeAction -> TrialRecord -> ExecutionStep, with new real side effects re-entering the PEP.
+- Avoid substring-only canary detection; prefer structured tool calls/state deltas or per-trial nonces in an expected channel/location.
+- Data-file / seam synchronization status (reviewed 2026-07-10): `not_applicable` wording and reproducibility grading are already reconciled in `ontology_schema.yaml` (denominator semantics distinguished from `out_of_scope`; BIT vs PROTOCOL reproducibility split). Two fields stay annotated-deferred by design, not overlooked: `prev_evidence_hash` (GATE-2) and `AI-AGENT-PI-01`'s `verification.plugin` binding (GATE-2). The running D8 harness is a standalone AgentDojo runner that does not load the profile/schema, so real friction has not yet reached these two fields; migrate each when code actually consumes it (evidence manifest at first persistence; capability descriptor when a control-driven planner runs the AI slice), not on a doc-only pass.
+- Normative authority should be explicit: pipeline note for D1-D8 product decisions; `architecture-seams-D8.md` for D8 runtime seams; ontology schema for the concrete persisted contract once synchronized; architecture diagrams are explanatory only. Commit/export the runtime v2 diagram locally rather than relying on a mutable Claude artifact URL.
+
+Do not interpret the seam work as authorization to build the deferred modules. D8 should remain one process, one fixed sequence, one target/base with bare and defended variants, no concurrency, no resume, and no independent services.
 
 ## Reading Priority
 

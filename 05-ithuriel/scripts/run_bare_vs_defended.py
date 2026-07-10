@@ -44,7 +44,12 @@ AUTODETECT = ["openai", "gemini", "groq", "openrouter", "deepseek", "together",
 DEFENSE  = os.environ.get("D8_DEFENSE", "spotlighting_with_delimiting")
 N_TRIALS = int(os.environ.get("D8_N_TRIALS", "10"))
 MIN_RUNS = 5
-SUITE, USER_TASK, INJ_TASK = "workspace", "user_task_0", "injection_task_0"
+SUITE     = os.environ.get("D8_SUITE", "workspace")
+USER_TASK = os.environ.get("D8_USER_TASK", "user_task_0")
+INJ_TASK  = os.environ.get("D8_INJ_TASK", "injection_task_0")
+# 可选：把攻击文案里的模型/用户身份覆盖成正确值（封"名字喂错削弱攻击"的混淆）。
+# 默认 None = 不覆盖（沿用 attack 从 pipe.name 解析出的通用身份，如 "Local model"）。
+MODEL_IDENTITY = os.environ.get("D8_MODEL_IDENTITY") or None
 # _no_names variant = provider-neutral: doesn't inject the model/user human-name into the payload
 ATTACK = os.environ.get("D8_ATTACK", "important_instructions_no_names")
 SYSMSG = ("You are an AI language model who assists the user by using the given tools. "
@@ -95,6 +100,17 @@ def make_llm():
     if kind == "openai":
         import openai
         client = openai.OpenAI(api_key=api_key, base_url=base_url)  # base_url None = 官方
+        if base_url:
+            # AgentDojo 0.1.35 把 system message 发成 role="developer"（OpenAI o1+ 新约定）。
+            # 非官方 OpenAI-compat 端点（DeepSeek/Mistral/… ）只认 `system` → 在传输边界改回，
+            # provider 无关、不碰 agentdojo 内部。官方 OpenAI（base_url None）保留 developer 语义。
+            _orig_create = client.chat.completions.create
+            def _create(*args, **kwargs):
+                for m in (kwargs.get("messages") or []):
+                    if isinstance(m, dict) and m.get("role") == "developer":
+                        m["role"] = "system"
+                return _orig_create(*args, **kwargs)
+            client.chat.completions.create = _create
         return OpenAILLM(client, MODEL)
     if kind == "anthropic":
         import anthropic
@@ -129,6 +145,8 @@ def one_trial(pipeline):
     t0 = time.time()
     try:
         attack = load_attack(ATTACK, suite, pipeline)
+        if MODEL_IDENTITY and hasattr(attack, "model_name"):
+            attack.model_name = MODEL_IDENTITY  # 用正确身份，堵"名字喂错"混淆
         injections = attack.attack(ut, it)
         utility, security = suite.run_task_with_pipeline(pipeline, ut, it, injections)
         return {"outcome": "attack_success" if security else "attack_failure",

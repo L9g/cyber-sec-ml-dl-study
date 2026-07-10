@@ -218,7 +218,7 @@
 ## 11. 后续测量设计问题（parked，不阻塞前期开发）
 
 以下工程细节移到"以后再做"，前期不碰：
-- ASR 置信区间、effect size、统计功效。
+- ASR 置信区间、effect size、统计功效。（**部分前移 2026-07-10**：ADR 0002 首个真跑坐实「`measurement_valid=True` ≠ 有功效」，故把**最小诚实 flag**——`security_delta` 附 CI + bare/defended CI 重叠时标 `underpowered`、不断言 delta——前移进 `architecture-seams-D8.md` §7；**完整** CI/effect-size/功效设计仍 parked。）
 - 签名 / 可信执行环境 / 独立时间戳等强 provenance。
 - 完整 `measurement_contract` schema。
 - defense-specific adaptive attacker 的严格实验设计。

@@ -150,6 +150,8 @@ evidence_requirements:
 
 `Finding` 的 `status` 不能只有 pass/fail，必须支持四态：`pass`、`fail`（需 rationale + severity）、`not_applicable`（不适用，需说明理由，且从覆盖率分母中剔除）、`inconclusive`（跑了但证据不足或有歧义，需重跑或升级人工）。把"没测到"和"测了没过"混成 fail 会同时制造假阳性和假阴性，审计里两者的处置完全不同。
 
+> **⚠️ 覆盖度状态词汇以 `docs/papers/ai-redteam-pipeline-learning-note.md §10 决策 D1` 为权威。** 上面四态是 schema 现值；D1 把"没测/没工具/范围外"从 `not_applicable` 里分出来（`not_tested`/`unsupported`/`out_of_scope` **进**分母、记为 gap；`not_applicable` 仅对目标真不适用者**出**分母），以免未测表面被排除、产生假绿。**冲突处一律以 D1 为准**；此处及下文（§4.2）不复制 D1 清单（DRY，单一真相源）。范围声明 = 该结构化覆盖清单，与覆盖度模型是同一对象。
+
 AI 探针是非确定性的：10 次注入里成功 3 次是真实但部分的失败，和 10/10 不是一回事，也不该被一次运行代表。所以每个 AI `Finding` 必须携带 `ai_run_record`：`model_id`、`model_version`、`temperature`、`seed`、`n_runs`、`n_success`、`success_rate`。安全/隐私类探针默认 `success_rate > 0` 即判 fail（除非有书面容忍度），置信度模糊则落 `inconclusive` 再升级人工。`n_runs` 不得低于 `ai_roe.min_runs_per_probe`。
 
 证据必须防篡改、可复现：每条 `Evidence` 记录 `tool_name`、精确 `tool_version`（不是范围）、`invocation_params`（脱敏后的完整参数）、`command_hash`、`output_hash`、`prev_evidence_hash`（把同一次运行的证据串成哈希链）、`collected_at`、`operator`。判据是：只凭 `tool_version` + `invocation_params` 就能重跑并复现该结论。这是把项目从"扫描器包装"抬到"可审计的保证证据"的关键一层。
@@ -183,7 +185,7 @@ Cyber Essentials 认证本身是全过或全不过，但保证报告需要分级
 - `evidence_plugin`: 文档、问卷、人工证明收集。
 - `report_plugin`: 报告转换和导出。
 
-插件必须围绕 control 而不是工具设计，且每个插件是**对现成工具的薄适配器**：调用 `nmap`、`garak`、`PyRIT`、`nuclei` 等，把其输出归一化进 Evidence schema，绝不重写扫描/探测逻辑，也不为每个 CE 控制手搓专用扫描器。没有现成工具覆盖的控制，先留 `not_applicable` 或占位，不为它破例自建重实现。
+插件必须围绕 control 而不是工具设计，且每个插件是**对现成工具的薄适配器**：调用 `nmap`、`garak`、`PyRIT`、`nuclei` 等，把其输出归一化进 Evidence schema，绝不重写扫描/探测逻辑，也不为每个 CE 控制手搓专用扫描器。没有现成工具覆盖的控制，标 `unsupported`（适用但当前无适配器，**进覆盖率分母、记为 gap**——**不是 `not_applicable`**，后者只给对目标真不适用的控制、才出分母；覆盖度词汇以上文 §3 banner 指向的 D1 为准），或先建插件占位，不为它破例自建重实现。
 
 ### 4.3 双用途安全边界
 

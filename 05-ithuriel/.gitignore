@@ -5,3 +5,11 @@ docs/papers/*.pdf
 data/**
 !data/.gitkeep
 !data/**/README.md
+
+# Python env（env per 项目：pyproject.toml + uv.lock 入 git，.venv 不入）
+.venv/
+__pycache__/
+*.pyc
+
+# 真跑输出（结果落 results/experiments.csv 才入 git；临时 json 不入）
+results/*.json

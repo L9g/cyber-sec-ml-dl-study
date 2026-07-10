@@ -49,7 +49,7 @@ finding_schema:
 finding_status:
   pass:           "Control satisfied; evidence supports conformance."
   fail:           "Control not satisfied; rationale + severity required."
-  not_applicable: "Control out of scope for this target/profile; reason required. Excluded from coverage denominator."
+  not_applicable: "Control GENUINELY inapplicable to this target (out of the coverage denominator); reason required. NOT the same as untested, tool-less, or authorization-scope exclusion — coverage vocabulary is authoritative in ai-redteam-pipeline-learning-note.md §10/D1 (not_tested / unsupported / out_of_scope go INTO the denominator as gaps; only not_applicable is excluded)."
   inconclusive:   "Test ran but evidence is insufficient or ambiguous; needs re-run or human_review."
 
 # Mechanistic root-cause tags (from survey 'duality' 2606.28450, foundations P1–P6).
@@ -102,10 +102,14 @@ evidence_integrity:
     - invocation_params     # full normalised parameter set, secrets redacted
     - command_hash          # hash of the exact invocation
     - output_hash           # hash of raw output
-    - prev_evidence_hash    # links records into a per-run hash chain
+    - prev_evidence_hash    # links records into a per-run hash chain.
+    # GATE-2 (reconcile at first fixture, before D8 persists data — see architecture-seams-D8.md #6):
+    # linear chain is a concurrency write-hotspot and cannot express branching. Long-term shape =
+    # per-Action content-addressed manifest -> aggregated run root. Field kept as-is until the
+    # fixture lands; do NOT treat the linear chain as the durable evidence shape.
     - collected_at
     - operator              # human or service identity that ran it
-  reproducible: "tool_version + invocation_params must be sufficient to re-run and reproduce the finding."
+  reproducible: "Two grades (do NOT conflate). (1) BIT-reproducible: RawArtifact is immutable and hashed; a deterministic tool's finding reproduces to an identical output. (2) PROTOCOL-reproducible: a NON-deterministic AI finding only promises that tool_version + invocation_params + measurement_context are sufficient to re-run the SAME measurement protocol and get a STATISTICALLY COMPARABLE result — not an identical number. Raw trajectories stay bit-immutable even when the aggregate is not bit-reproducible. (see architecture-seams-D8.md §3.5 add / MeasurementContext #5)"
 
 # The self-authored attack-scenario corpus (doc §7 differentiator) is also a high-risk
 # asset and must be governed like code, not treated as loose prompt files.

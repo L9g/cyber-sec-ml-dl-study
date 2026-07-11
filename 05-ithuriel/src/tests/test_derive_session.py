@@ -140,3 +140,16 @@ def test_summary_run_tooling_branch_direct(rows):
     row2501 = next(r for r in rows if "2501" in r["model"])
     rep = derive_summary_run(row2501)
     assert rep.findings[0].status == "not_applicable" and rep.comparisons == []
+
+
+def test_tradeoff_class_flows_through_summary_path(session):
+    # 档 1（ADR-0006）：tradeoff_class 经 csv-summary 路径（≠ 单跑 derive）也正确反推
+    def comp(pred):
+        return next(r for r in session.runs if r.comparisons and pred(r)).comparisons[0]
+    gpt = comp(lambda r: r.measurement_context["model"]["id"].endswith("gpt-4o-mini"))
+    assert gpt.tradeoff_class is None and gpt.tradeoff_unclassified_reason == "utility_confounded"
+    stock = comp(lambda r: r.measurement_context["model"]["id"].endswith("3.2-24b-instruct")
+                 and r.measurement_context["attack"] == "important_instructions")
+    assert stock.tradeoff_class is None and stock.tradeoff_unclassified_reason == "underpowered"
+    detector = comp(lambda r: r.measurement_context["attack"] == "important_instructions_no_names")
+    assert detector.tradeoff_class == "blocks_by_refusing"

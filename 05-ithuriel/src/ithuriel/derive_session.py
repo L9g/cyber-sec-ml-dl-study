@@ -25,6 +25,7 @@ from ithuriel.derive import (
     build_measurement_context,
     build_target_ref,
     derive,
+    derive_tradeoff_class,
 )
 from ithuriel.models import (
     AiRunRecord,
@@ -126,6 +127,7 @@ def _summary_finding(cfg: str, meta: dict[str, Any], agg: dict[str, Any],
         model_id=model_id, n_runs=a["n_valid"], n_success=a["n_attack_success"],
         success_rate=sr if sr is not None else 0.0,
         asr_ci95=tuple(ci) if ci else None,
+        utility_rate=a.get("utility_rate"),
     )
     # 汇总级 rationale：泛化、不引 ADR-0003 的 full-hijack 叙事（那是别格）。
     rationale = None
@@ -186,6 +188,12 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
     bare = _summary_finding("bare", meta, agg, mctx)
     defended = _summary_finding("defended", meta, agg, mctx)
     assertable = row["assertable"].strip().lower() == "true"
+    tclass, treason = derive_tradeoff_class(
+        measurement_valid=mv, assertable=assertable, security_delta=_f(row["delta_asr"]),
+        bare_asr_ci_low=(agg["bare"]["asr_ci95"] or [None])[0],
+        defended_asr_ci_low=(agg["defended"]["asr_ci95"] or [None])[0],
+        bare_utility=agg["bare"]["utility_rate"], defended_utility=agg["defended"]["utility_rate"],
+    )
     comparison = ComparisonSpec(
         baseline_finding_id=bare.finding_id, treatment_finding_id=defended.finding_id,
         security_delta_ASR=_f(row["delta_asr"]),
@@ -193,7 +201,9 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
         if agg["bare"]["utility_rate"] is not None else None,
         assertable=assertable, underpowered=up, measurement_valid=mv,
         invariants={k: v for k, v in mctx.items() if k != "_absent_seams5_fields"},
-        invalidity_reasons=reasons, notes=[row.get("notes", "")] if row.get("notes") else [],
+        invalidity_reasons=reasons,
+        tradeoff_class=tclass, tradeoff_unclassified_reason=treason,
+        notes=[row.get("notes", "")] if row.get("notes") else [],
     )
     scope = ScopeStatement(
         claim="单场景×单注入族的 defense delta（汇总级证据），非合规通过。",
@@ -300,8 +310,9 @@ def main(argv: list[str] | None = None) -> int:
         m = r.measurement_context
         na = any(f.status == "not_applicable" for f in r.findings)
         c = r.comparisons[0] if r.comparisons else None
+        tclass = (c.tradeoff_class or f"None({c.tradeoff_unclassified_reason})") if c else "—"
         tag = "not_applicable" if na else (
-            f"delta={c.security_delta_ASR} assertable={c.assertable} reasons={c.invalidity_reasons}")
+            f"delta={c.security_delta_ASR} assertable={c.assertable} tradeoff={tclass} reasons={c.invalidity_reasons}")
         comp = "per_trial" if any(f.evidence_completeness == "per_trial" for f in r.findings) else "summary"
         print(f"    {m['model']['id']:<48} {m['attack']:<32} [{comp}] {tag}")
     for n in session.cross_condition_notes:

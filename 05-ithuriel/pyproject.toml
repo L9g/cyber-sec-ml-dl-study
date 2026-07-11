@@ -8,6 +8,23 @@ dependencies = [
     "agentdojo==0.1.35",
 ]
 
+[project.optional-dependencies]
+# 借来的 transformers_pi_detector 防御（deberta PI 检测器）。核心保持轻、按需装：
+#   uv sync --extra pi-detector
+# 开发机无 GPU → torch 走 CPU-only 索引（见 tool.uv.sources），避开 CUDA 大包。
+pi-detector = [
+    "torch",
+    "transformers",
+]
+
 [tool.uv]
 # 这是一个"跑得起来的项目环境"，不是要发布的包——别让 uv 尝试构建/安装它自身。
 package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

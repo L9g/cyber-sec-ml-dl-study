@@ -85,22 +85,54 @@ def build_target_ref(model_id: str, transport: str, defense: str) -> dict[str, A
     }
 
 
+def _absent_seams5(prov: dict[str, Any]) -> list[str]:
+    """据 provenance 现况算 seams §5 仍缺的字段（档 2）。无 provenance（历史跑）→ 全缺，优雅退化。
+
+    seed_schedule 恒缺：AgentDojo 不发 seed、档 2 决策=只记录不注入。其余由 harness 溯源钉死。
+    """
+    corpus = prov.get("corpus") or {}
+    present = {
+        "corpus_version": bool(corpus),
+        "scenario.version": bool(corpus.get("suite_family")),
+        "model.version": prov.get("served_model") is not None,
+        "detector_version": bool(prov.get("detector")),
+        "aggregate_rule_version": prov.get("aggregate_rule_version") is not None,
+        "seed_schedule": False,                 # 记录-only 决策 → 恒缺（honest）
+        "adaptive_level": prov.get("adaptive_level") is not None,
+    }
+    return [f for f in SEAMS5_EXPECTED if not present[f]]
+
+
 def build_measurement_context(meta: dict[str, Any]) -> dict[str, Any]:
-    """meta → seams §5 兼容子集 + 明确缺口清单（present 值不编造缺失值）。"""
+    """meta → seams §5 兼容子集 + 明确缺口清单（present 值不编造缺失值）。
+
+    档 2：`meta.provenance` 存在时填 model.version(=served snapshot)/corpus/detector/… 并收缩
+    `_absent_seams5_fields`；缺 provenance 的历史跑保持全 absent（向后兼容、优雅退化）。
+    """
     model_id = f"{meta['provider']}/{meta['model']}"
+    prov = meta.get("provenance") or {}
+    corpus = prov.get("corpus") or {}
     return {
-        "scenario": {"id": meta["scenario"], "version": None},
-        "model": {"id": model_id, "version": None},
+        "scenario": {"id": meta["scenario"], "version": corpus.get("suite_family")},
+        "model": {"id": model_id, "version": prov.get("served_model"),
+                  "requested_alias": prov.get("requested_model"),
+                  "system_fingerprint": prov.get("system_fingerprint")},
         "model_transport": meta["model_transport"],
         "attack": meta["attack"],           # 语料强度 proxy（provenance 见独立性披露）
         "execution_backend": "agentdojo-mock",   # harness 已知=AgentDojo mock
         "harness_tool_version": meta.get("harness"),
+        "corpus_version": corpus or None,
+        "detector_version": prov.get("detector") or None,
+        "aggregate_rule_version": prov.get("aggregate_rule_version"),
+        "adaptive_level": prov.get("adaptive_level"),
+        "libs": prov.get("libs") or None,
         "sampling_plan": {
             "n_trials": meta["n_trials_per_config"],
             "order_policy": meta["order_policy"],
-            "seed_schedule": None,
+            "seed_schedule": None,          # 恒缺（记录-only，见 _absent_seams5）
+            "temperature": prov.get("temperature"),  # {config_intent, on_wire}（0.0→省略 的诚实记录）
         },
-        "_absent_seams5_fields": SEAMS5_EXPECTED,   # 真实摩擦：待 harness 补记
+        "_absent_seams5_fields": _absent_seams5(prov),   # 真实摩擦：仍缺的（档 2 后通常只剩 seed_schedule）
     }
 
 
@@ -146,6 +178,7 @@ def build_finding(cfg: str, data: dict[str, Any], mctx: dict[str, Any],
         success_rate=sr if sr is not None else 0.0,
         asr_ci95=tuple(agg["asr_ci95"]) if agg.get("asr_ci95") else None,
         utility_rate=agg.get("utility_rate"),
+        model_version=mctx["model"].get("version"),  # served snapshot（档 2）；历史跑无 provenance → None
     )
     ci = agg.get("asr_ci95")
     if cfg == "bare":

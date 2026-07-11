@@ -47,6 +47,8 @@ model{id,version} · model_transport · attack_strength/adaptive_level · harnes
 detector_version · aggregate_rule_version · execution_backend ·
 sampling_plan{n_trials, seed_schedule, order_policy}
 ```
+> **v1.3 更新（2026-07-11，档 2 / ADR-0007）**：harness 现**真钉这些字段**（不再全 `_absent`）——`model.version`=response.model（served snapshot，治 `-latest` 别名坑）、`corpus_version`/`scenario.version`=agentdojo+suite、`detector_version`=defense+transformers 版本、`aggregate_rule_version`=`wilson-ci-v1`、`adaptive_level`=`static`、`temperature`={config_intent, on_wire}（记 `0.0→省略` 的诚实差）。**仍缺**：`seed_schedule`（AgentDojo 不发 seed、档 2 决策=只记录不注入）。溯源在 `ithuriel.provenance`（薄适配器归一化，harness 调）；历史无 provenance 的跑优雅退化=保持全 absent。
+
 Target 三分（保留「defense ∈ target config」所有权边界，又能表达同基础系统上两个实验组）：
 ```
 target_base_hash    = agent/model/tool 基础配置

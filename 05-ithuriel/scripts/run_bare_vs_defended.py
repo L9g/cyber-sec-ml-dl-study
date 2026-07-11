@@ -21,6 +21,18 @@ differential attrition · harness 健康闸门（bare ASR≡0 → measurement_in
   D8_PROVIDER=custom D8_BASE_URL=https://... D8_API_KEY=... D8_MODEL=...  <py> scripts/run_bare_vs_defended.py
 """
 import os, sys, json, time, datetime
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
+# 薄适配器：把溯源归一化进 ithuriel evidence schema（建层单一真相），harness 只填值（档 2, ADR-0007）。
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from ithuriel.provenance import static_provenance, record_response
+
+
+def _lib_ver(name):
+    try:
+        return _pkg_version(name)
+    except PackageNotFoundError:
+        return None
 
 # preset -> (base_url, key_env, kind, default_model)
 PRESETS = {
@@ -100,17 +112,19 @@ def make_llm():
     if kind == "openai":
         import openai
         client = openai.OpenAI(api_key=api_key, base_url=base_url)  # base_url None = 官方
-        if base_url:
-            # AgentDojo 0.1.35 把 system message 发成 role="developer"（OpenAI o1+ 新约定）。
-            # 非官方 OpenAI-compat 端点（DeepSeek/Mistral/… ）只认 `system` → 在传输边界改回，
-            # provider 无关、不碰 agentdojo 内部。官方 OpenAI（base_url None）保留 developer 语义。
-            _orig_create = client.chat.completions.create
-            def _create(*args, **kwargs):
+        # 传输边界 wrapper（**无条件**装，捕获 provenance）：
+        #  ① base_url 非空时把 role="developer"→"system"（AgentDojo o1+ 约定；compat 端点只认 system）；
+        #  ② 每次调用后从首个成功 response 钉 served_model/system_fingerprint + 线上 temperature/seed（档 2）。
+        _orig_create = client.chat.completions.create
+        def _create(*args, **kwargs):
+            if base_url:
                 for m in (kwargs.get("messages") or []):
                     if isinstance(m, dict) and m.get("role") == "developer":
                         m["role"] = "system"
-                return _orig_create(*args, **kwargs)
-            client.chat.completions.create = _create
+            resp = _orig_create(*args, **kwargs)
+            record_response(PROV, kwargs, resp)
+            return resp
+        client.chat.completions.create = _create
         llm = OpenAILLM(client, MODEL)
         # tool_filter 防御在 from_config 内部要 llm.name（建预筛 LLM 调用用）；OpenAILLM 只设 .model。
         # 设 .name 让 tool_filter 对任意 openai-compat provider 可用；不扰动攻击身份（line 141 之后覆盖 pipe.name）。
@@ -134,6 +148,15 @@ if DEFENSE == "tool_filter" and kind != "openai":
     DEFENSE_EFF = "spotlighting_with_delimiting"
 else:
     DEFENSE_EFF = DEFENSE
+
+# provenance（档 2）：openai kind 的 config_intent temperature = AgentDojo OpenAILLM 默认 0.0
+# （但发送时 `0.0 or NOT_GIVEN`→省略，见 provenance.record_response）；非 openai kind 记 None。
+PROV = static_provenance(
+    requested_model=MODEL, transport=kind, defense=DEFENSE_EFF, suite=SUITE,
+    lib_versions={"agentdojo": _lib_ver("agentdojo"), "openai": _lib_ver("openai"),
+                  "transformers": _lib_ver("transformers")},
+    temperature_intent=0.0 if kind == "openai" else None,
+)
 
 def build_pipeline(defense):
     kwargs = dict(llm=make_llm(), model_id=None, system_message_name=None,
@@ -243,7 +266,8 @@ out = {"meta": {"generated_at": datetime.datetime.now(datetime.timezone.utc).iso
                 "provider": prov, "model": MODEL, "model_transport": kind, "base_url": base_url,
                 "defense": DEFENSE_EFF, "attack": ATTACK, "scenario": f"{SUITE}/{USER_TASK}+{INJ_TASK}",
                 "n_trials_per_config": N_TRIALS, "order_policy": "interleaved",
-                "harness": "scripts/run_bare_vs_defended.py"},
+                "harness": "scripts/run_bare_vs_defended.py",
+                "provenance": PROV},
        "aggregate": A, "measurement_valid": measurement_valid, "validity_notes": notes,
        "differential_attrition_n_valid_gap": da,
        "underpowered": underpowered,
@@ -266,4 +290,7 @@ print(f"  security_delta(ASR)={sd}  utility_delta={delta('utility_rate')}")
 print(f"  measurement_valid={measurement_valid}  underpowered={underpowered}  "
       f"→ security_delta {'可断言' if assertable else '不可断言'}")
 for n in notes: print(f"    ! {n}")
+print(f"  provenance: requested={PROV['requested_model']} served={PROV['served_model']} "
+      f"fingerprint={PROV['system_fingerprint']} temp(intent/wire)={PROV['temperature']['config_intent']}/"
+      f"{PROV['temperature']['on_wire']}")
 print(f"\n[harness] 写入 {fn}")

@@ -128,6 +128,7 @@ def _summary_finding(cfg: str, meta: dict[str, Any], agg: dict[str, Any],
         success_rate=sr if sr is not None else 0.0,
         asr_ci95=tuple(ci) if ci else None,
         utility_rate=a.get("utility_rate"),
+        model_version=mctx["model"].get("version"),  # served snapshot（档 2）；csv 汇总级通常无 → None
     )
     # 汇总级 rationale：泛化、不引 ADR-0003 的 full-hijack 叙事（那是别格）。
     rationale = None

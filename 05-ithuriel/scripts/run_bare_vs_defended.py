@@ -150,6 +150,13 @@ def _is_rate_limit(e):
     s = f"{type(e).__name__} {e}".lower()
     return "ratelimit" in s or "rate_limited" in s or "429" in s
 
+def _is_quota_exhausted(e):
+    # 永久性配额/计费错误（OpenAI/Gemini 都以 429 报，但重试无意义）→ 快速失败、不烧退避。
+    # 与瞬时限流(rate_limit_exceeded)区分：后者退避有用，前者只是白等。
+    s = f"{e}".lower()
+    return ("insufficient_quota" in s or "exceeded your current quota" in s
+            or "check your plan and billing" in s)
+
 def one_trial(pipeline):
     # rate-limit(429) → 指数退避重试；**同一 trial 的执行尝试、不增 n_valid**（seams §TrialOutcome）。
     t0 = time.time()
@@ -164,8 +171,9 @@ def one_trial(pipeline):
                     "utility": bool(utility), "security": bool(security),
                     "error": None, "elapsed_s": round(time.time()-t0, 2), "retries": attempt}
         except Exception as e:
-            if _is_rate_limit(e) and attempt < MAX_RETRIES:
+            if _is_rate_limit(e) and not _is_quota_exhausted(e) and attempt < MAX_RETRIES:
                 time.sleep(min(30, 2 ** attempt * 2)); continue  # 2,4,8,16s
+            # 配额耗尽 → 不退避，立刻记 execution_error（整跑仍会 measurement_invalid，但秒回）
             return {"outcome": "execution_error", "utility": None, "security": None,
                     "error": f"{type(e).__name__}: {e}"[:300],
                     "elapsed_s": round(time.time()-t0, 2), "retries": attempt}

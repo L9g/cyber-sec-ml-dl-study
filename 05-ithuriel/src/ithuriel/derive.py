@@ -35,6 +35,21 @@ def _defense_hash(defense: str) -> str:
     return content_hash({"type": dtype}, prefix="def:")
 
 
+def build_target_ref(model_id: str, transport: str, defense: str) -> dict[str, Any]:
+    """结构化 target variant（DRY：全证据 build_finding 与汇总级 session 路径共用）。
+
+    finding_id 派生依赖 target_ref → 本帮手保持哈希稳定（重构不改既有 finding_id）。
+    """
+    base_hash = content_hash({"model_id": model_id, "transport": transport}, prefix="base:")
+    def_hash = _defense_hash(defense)
+    return {
+        "model_id": model_id, "model_transport": transport,
+        "defense": defense, "defense_hash": def_hash,
+        "target_base_hash": base_hash,
+        "target_variant_hash": content_hash({"base": base_hash, "defense": def_hash}, prefix="tv:"),
+    }
+
+
 def build_measurement_context(meta: dict[str, Any]) -> dict[str, Any]:
     """meta → seams §5 兼容子集 + 明确缺口清单（present 值不编造缺失值）。"""
     model_id = f"{meta['provider']}/{meta['model']}"
@@ -83,19 +98,12 @@ def _status_from_success_rate(sr: float | None) -> str:
 
 
 def build_finding(cfg: str, data: dict[str, Any], mctx: dict[str, Any],
-                  manifest: EvidenceManifest) -> Finding:
+                  manifest: EvidenceManifest,
+                  completeness: str = "per_trial") -> Finding:
     meta, agg = data["meta"], data["aggregate"][cfg]
     defense = "none" if cfg == "bare" else meta["defense"]
     model_id = mctx["model"]["id"]
-    base_hash = content_hash({"model_id": model_id, "transport": meta["model_transport"]},
-                             prefix="base:")
-    def_hash = _defense_hash(defense)
-    target_ref = {
-        "model_id": model_id, "model_transport": meta["model_transport"],
-        "defense": defense, "defense_hash": def_hash,
-        "target_base_hash": base_hash,
-        "target_variant_hash": content_hash({"base": base_hash, "defense": def_hash}, prefix="tv:"),
-    }
+    target_ref = build_target_ref(model_id, meta["model_transport"], defense)
     sr = agg["attack_success_rate"]
     status = _status_from_success_rate(sr)
     run_record = AiRunRecord(
@@ -118,6 +126,7 @@ def build_finding(cfg: str, data: dict[str, Any], mctx: dict[str, Any],
             evidence_refs=manifest.index[cfg],
             severity="high",  # 占位：control.severity_if_failed 待 control registry（桶 B）
             rationale=rationale, run_record=run_record, root_causes=["P1", "P3"],
+            evidence_completeness=completeness,
         )
     else:
         util_defended = agg.get("utility_rate")
@@ -131,12 +140,14 @@ def build_finding(cfg: str, data: dict[str, Any], mctx: dict[str, Any],
             verdict_mode="automatic", assessed_at=meta["generated_at"],
             evidence_refs=manifest.index[cfg],
             rationale=rationale, run_record=run_record,  # pass：severity/root_causes 语义为空
+            evidence_completeness=completeness,
         )
     return finding
 
 
 def build_comparison(bare: Finding, defended: Finding, data: dict[str, Any],
-                     mctx: dict[str, Any]) -> ComparisonSpec:
+                     mctx: dict[str, Any],
+                     invalidity_reasons: list[str] | None = None) -> ComparisonSpec:
     # treatment=defense_hash；其余 invariant 全等（未声明差异→invalid，fail-closed，seams #5）
     invariants = {k: v for k, v in mctx.items() if k != "_absent_seams5_fields"}
     return ComparisonSpec(
@@ -144,11 +155,13 @@ def build_comparison(bare: Finding, defended: Finding, data: dict[str, Any],
         security_delta_ASR=data["security_delta_ASR"], utility_delta=data["utility_delta"],
         assertable=data["security_delta_assertable"], underpowered=data["underpowered"],
         measurement_valid=data["measurement_valid"], invariants=invariants,
+        invalidity_reasons=invalidity_reasons or [],
         notes=data.get("validity_notes", []),
     )
 
 
-def build_scope(data: dict[str, Any], mctx: dict[str, Any]) -> ScopeStatement:
+def build_scope(data: dict[str, Any], mctx: dict[str, Any],
+                invalidity_reasons: list[str] | None = None) -> ScopeStatement:
     meta = data["meta"]
     return ScopeStatement(
         claim=("单场景×单注入族的 defense delta 测量，非合规通过；"
@@ -167,18 +180,21 @@ def build_scope(data: dict[str, Any], mctx: dict[str, Any]) -> ScopeStatement:
         ],
         measurement_valid=data["measurement_valid"],
         underpowered=data["underpowered"],
+        invalidity_reasons=invalidity_reasons or [],
     )
 
 
-def derive(data: dict[str, Any]) -> AssuranceReport:
+def derive(data: dict[str, Any], *, completeness: str = "per_trial",
+           invalidity_reasons: list[str] | None = None,
+           generated_from: str = "results/d8_bare_vs_defended.json") -> AssuranceReport:
     mctx = build_measurement_context(data["meta"])
     manifest = build_manifest(data, mctx)
-    bare = build_finding("bare", data, mctx, manifest)
-    defended = build_finding("defended", data, mctx, manifest)
-    comparison = build_comparison(bare, defended, data, mctx)
-    scope = build_scope(data, mctx)
+    bare = build_finding("bare", data, mctx, manifest, completeness)
+    defended = build_finding("defended", data, mctx, manifest, completeness)
+    comparison = build_comparison(bare, defended, data, mctx, invalidity_reasons)
+    scope = build_scope(data, mctx, invalidity_reasons)
     return AssuranceReport(
-        generated_from="results/d8_bare_vs_defended.json",
+        generated_from=generated_from,
         measurement_context=mctx, evidence_manifest=manifest,
         findings=[bare, defended], comparisons=[comparison], scope=scope,
     )

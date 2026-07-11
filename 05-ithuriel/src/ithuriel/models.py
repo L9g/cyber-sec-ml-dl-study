@@ -20,6 +20,16 @@ from pydantic import BaseModel, Field, model_validator
 
 FindingStatus = Literal["pass", "fail", "not_applicable", "inconclusive"]
 VerdictMode = Literal["automatic", "llm_judge", "human_review"]
+# 证据保真度（据本会话真实摩擦反推，2026-07-11）：单文件覆盖式 → runs 1–4 raw 已丢，
+# 只余汇总。汇总级 Finding 是**更弱**的保证 artifact（无 per-trial evidence_refs/manifest），
+# 不许冒充全证据。见 ADR-0005 步骤 6。
+EvidenceCompleteness = Literal["per_trial", "summary_only"]
+# defense delta 不可断言的正交子因（反推自 5 跑）：measurement_valid=False 有两个截然不同的
+# 子因——正对照缺失(bare ASR=0) vs 配额截断(n_valid 大幅 < n_trials)；underpowered=CI 重叠、
+# 但正对照在；tooling_unsupported=harness 根本没执行（如 OpenRouter 路由 404 无 tool use）。
+InvalidityReason = Literal[
+    "no_positive_control", "quota_truncated", "underpowered", "tooling_unsupported",
+]
 # root_cause_enum（schema v0.6，advisory-only，无序集合，≥1，不设 primary）
 RootCause = Literal["P1", "P2", "P3", "P4", "P5", "P6", "OTHER", "UNDETERMINED"]
 
@@ -67,6 +77,7 @@ class Finding(BaseModel):
     rationale: Optional[str] = None      # status fail/inconclusive 必填
     run_record: Optional[AiRunRecord] = None
     root_causes: Optional[list[RootCause]] = None  # advisory，只标 fail（真实失败机理）
+    evidence_completeness: EvidenceCompleteness = "per_trial"  # summary_only=raw 已丢、仅汇总
     finding_id: str = ""                 # 内容寻址派生，见 model_validator
 
     @model_validator(mode="after")
@@ -107,6 +118,7 @@ class ComparisonSpec(BaseModel):
     underpowered: Optional[bool]
     measurement_valid: bool
     invariants: dict[str, Any]           # treatment 外必须全等的字段（未声明差异→invalid）
+    invalidity_reasons: list[InvalidityReason] = Field(default_factory=list)  # ¬assertable 的正交子因
     notes: list[str] = Field(default_factory=list)
 
 
@@ -122,6 +134,7 @@ class ScopeStatement(BaseModel):
     not_covered: list[str]               # 进覆盖分母的 gap（not_tested/unsupported/out_of_scope 类）
     measurement_valid: bool
     underpowered: Optional[bool]
+    invalidity_reasons: list[InvalidityReason] = Field(default_factory=list)
 
 
 class EvidenceManifest(BaseModel):
@@ -146,3 +159,17 @@ class AssuranceReport(BaseModel):
     findings: list[Finding]
     comparisons: list[ComparisonSpec]
     scope: ScopeStatement
+
+
+class SessionReport(BaseModel):
+    """跨多个测量条件（一个会话的 N 跑）的保证信封。
+
+    据本会话真实摩擦反推（2026-07-11，5 跑，见 ADR-0005）：单跑 AssuranceReport 不够——
+    真实评估是一批条件（跨 model×attack×defense），其中掺杂 invalid 跑（无正对照/配额/无 tool use）
+    与混合保真度（仅末跑存 per-trial，其余 raw 已覆盖）。session 层**只聚合与横向观察、不重算裁定**。
+    """
+
+    session_id: str
+    generated_from: list[str]            # 溯源：全部输入文件（csv + 存活 json）
+    runs: list[AssuranceReport]          # 每条测量条件一个（含 invalid/not_applicable 跑）
+    cross_condition_notes: list[str] = Field(default_factory=list)  # 横向观察（如攻击变体摆动）

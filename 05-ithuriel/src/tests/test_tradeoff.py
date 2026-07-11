@@ -108,7 +108,7 @@ def test_wiring_spotlighting_defended_fail_has_severity(spotlighting):
     # 回归：防御无效 → defended 也 fail（ASR 1.0），须带 severity+机理（此前只处理 pass）
     defended = spotlighting.findings[1]
     assert defended.status == "fail"
-    assert defended.severity == "high" and defended.root_causes == ["P1", "P3"]
+    assert defended.severity == "High" and defended.root_causes == ["P1", "P3"]
 
 
 def test_wiring_repeat_blocks_by_refusing(repeat):

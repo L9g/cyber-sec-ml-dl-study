@@ -27,6 +27,7 @@ from ithuriel.derive import (
     derive,
     derive_tradeoff_class,
 )
+from ithuriel.registry import default_control, referenced_standards
 from ithuriel.models import (
     AiRunRecord,
     AssuranceReport,
@@ -138,11 +139,12 @@ def _summary_finding(cfg: str, meta: dict[str, Any], agg: dict[str, Any],
     elif status == "inconclusive":
         rationale = (f"bare ASR={sr}（{a['n_valid']} valid, CI95 {ci}）→ 正对照缺失/欠功效，"
                      "CI 上界非零 → 不可声称目标『安全』，仅记不可断言。汇总级证据。")
+    ctrl = default_control()             # 档 3：severity/verdict 从注册表解析
     return Finding(
         control_id=CONTROL_ID, target_ref=build_target_ref(model_id, meta["model_transport"], defense),
-        status=status, verdict_mode="automatic", assessed_at=meta["generated_at"],
+        status=status, verdict_mode=ctrl.verification.verdict, assessed_at=meta["generated_at"],
         evidence_refs=[],                    # 汇总级：无 per-trial 证据可引
-        severity="high" if status == "fail" else None,  # schema：任何 fail 必带 severity
+        severity=ctrl.severity_if_failed if status == "fail" else None,  # 继承 control.severity_if_failed
         rationale=rationale, run_record=run_record,
         root_causes=["P1", "P3"] if status == "fail" else None,
         evidence_completeness="summary_only",
@@ -156,7 +158,8 @@ def _not_applicable_report(meta: dict[str, Any], mctx: dict[str, Any],
     na = Finding(
         control_id=CONTROL_ID,
         target_ref=build_target_ref(model_id, meta["model_transport"], meta["defense"]),
-        status="not_applicable", verdict_mode="automatic", assessed_at=meta["generated_at"],
+        status="not_applicable", verdict_mode=default_control().verification.verdict,
+        assessed_at=meta["generated_at"],
         evidence_refs=[], rationale=None, run_record=None,
         evidence_completeness="summary_only",
     )
@@ -171,6 +174,7 @@ def _not_applicable_report(meta: dict[str, Any], mctx: dict[str, Any],
     return AssuranceReport(
         generated_from="results/experiments.csv", measurement_context=mctx,
         evidence_manifest=_empty_manifest(mctx), findings=[na], comparisons=[], scope=scope,
+        control=default_control(), referenced_standards=referenced_standards(),
     )
 
 
@@ -218,6 +222,7 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
         generated_from="results/experiments.csv", measurement_context=mctx,
         evidence_manifest=manifest, findings=[bare, defended],
         comparisons=[comparison], scope=scope,
+        control=default_control(), referenced_standards=referenced_standards(),
     )
 
 

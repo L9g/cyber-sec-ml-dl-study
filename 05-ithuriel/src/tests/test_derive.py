@@ -39,7 +39,7 @@ def test_two_findings_bare_fail_defended_pass(report):
 def test_fail_requires_rationale_and_severity(report):
     bare = report.findings[0]
     assert bare.status == "fail"
-    assert bare.severity == "high"        # 占位（control registry 未建）
+    assert bare.severity == "High"        # 档 3：继承 control.severity_if_failed（注册表解析）
     assert bare.rationale                  # 非空
     assert bare.root_causes == ["P1", "P3"]  # 机理只标失败
 

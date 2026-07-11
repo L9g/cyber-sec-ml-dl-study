@@ -16,7 +16,7 @@ import hashlib
 import json
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 FindingStatus = Literal["pass", "fail", "not_applicable", "inconclusive"]
 VerdictMode = Literal["automatic", "llm_judge", "human_review"]
@@ -167,6 +167,72 @@ class EvidenceManifest(BaseModel):
     index: dict[str, list[str]]          # config(bare/defended) → [trial_hash]
 
 
+# ── 控制注册表（档 3，ADR-0008）= 差异化层「标准→ontology」半边 ──────────────
+# profile（UK_Region_Profile_v0.2.yaml）里已声明的**只读**消费：控制元数据 + standards 注册表。
+# 不建 capability/plugin 匹配（GATE-2 defer）、不改 profile/ontology YAML。
+Severity = Literal["Low", "Medium", "High", "Critical"]  # 配 ontology scoring gating（High/Critical 否决）
+VerificationMethod = Literal["automated_test", "config_inspection", "document_review", "attestation"]
+
+
+class StandardRef(BaseModel):
+    """控制→标准的引用；source 必须在 profile standards 注册表声明（不变量，见 Registry 校验）。"""
+    model_config = ConfigDict(extra="ignore")
+    source: str                          # 标准 id，如 owasp_llm_top_10_2025
+    ref: str                             # 标准内定位，如 "LLM01 Prompt Injection"
+
+
+class Verification(BaseModel):
+    """三正交维之一体：method（执行）+ verdict（判定）+ requires_approval（授权闸门）。"""
+    model_config = ConfigDict(extra="ignore")
+    method: VerificationMethod
+    verdict: VerdictMode                  # automatic/llm_judge/human_review
+    requires_approval: bool = False
+    plugin: Optional[str] = None          # GATE-2 直接绑定，当**不透明元数据**消费（不做匹配）
+
+
+class ControlDefinition(BaseModel):
+    """profile 控制实例（只取本层消费的字段；probe_suite/csf2/plugins 等 extra 忽略）。"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    title: str
+    domain: Optional[str] = None
+    severity_if_failed: Optional[Severity] = None  # Finding.severity 于 fail 时继承此值
+    standards_refs: list[StandardRef]
+    verification: Verification
+
+
+class StandardEntry(BaseModel):
+    """standards 注册表一条：id → 权威/角色/链接（source 悬空校验的真相源）。"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str
+    authority: Optional[str] = None
+    role: Optional[str] = None
+    url: Optional[str] = None
+    status: Optional[str] = None          # planned / (在用无此字段)
+
+
+class Registry(BaseModel):
+    """control + standards 注册表，加载时强制 schema 不变量：standards_ref.source 不得悬空。"""
+    standards: dict[str, StandardEntry]
+    controls: dict[str, ControlDefinition]
+
+    @model_validator(mode="after")
+    def _no_dangling_standard_source(self) -> "Registry":
+        for cid, c in self.controls.items():
+            for r in c.standards_refs:
+                if r.source not in self.standards:
+                    raise ValueError(
+                        f"control {cid}: standards_ref.source '{r.source}' "
+                        "未在 profile standards 注册表声明（悬空引用，违反 schema 不变量）")
+        return self
+
+    def referenced_standards(self, control_id: str) -> dict[str, StandardEntry]:
+        """某控制引用到的 standards 子集（source → 解析后的 StandardEntry）；审计闭环用。"""
+        return {r.source: self.standards[r.source]
+                for r in self.controls[control_id].standards_refs}
+
+
 class AssuranceReport(BaseModel):
     """把一格真跑的『建』产物打成一个可审计信封。"""
 
@@ -177,6 +243,10 @@ class AssuranceReport(BaseModel):
     findings: list[Finding]
     comparisons: list[ComparisonSpec]
     scope: ScopeStatement
+    # 档 3：解析后的控制（带 standards_refs）+ 引用到的 standards，挂**报告层**（范式化，
+    # 非 Finding 字段——Finding 只 control_id，standards 由 control_id 函数决定）。默认可空 → 不破旧构造。
+    control: Optional[ControlDefinition] = None
+    referenced_standards: dict[str, StandardEntry] = Field(default_factory=dict)
 
 
 class SessionReport(BaseModel):

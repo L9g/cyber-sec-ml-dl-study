@@ -21,6 +21,16 @@ pi-detector = [
 # 这是一个"跑得起来的项目环境"，不是要发布的包——别让 uv 尝试构建/安装它自身。
 package = false
 
+[tool.pytest.ini_options]
+# package=false → 不做 editable install；用 pythonpath 让测试找到 src/ithuriel。
+pythonpath = ["src"]
+testpaths = ["src/tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 

@@ -56,7 +56,7 @@ def test_summary_runs_have_no_per_trial_evidence(session):
     # 汇总级：evidence_refs 空 + manifest artifacts 空（raw 已覆盖，不冒充全证据）
     summ = [r for r in session.runs
             if any(f.evidence_completeness == "summary_only" for f in r.findings)]
-    assert len(summ) == 4
+    assert len(summ) == 3  # partner review C4：unsupported 跑无 Finding → 不计（原 4 含 NA 跑）
     for r in summ:
         assert r.evidence_manifest.artifacts == {}
         for f in r.findings:
@@ -99,13 +99,15 @@ def test_mistral_stock_underpowered(session):
     assert c.assertable is False and c.invalidity_reasons == ["underpowered"]
 
 
-def test_2501_not_applicable_no_comparison(session):
-    # tooling_unsupported（全 404）→ 一条 not_applicable、无 comparison、进覆盖分母
+def test_2501_unsupported_is_coverage_gap_not_finding(session):
+    # partner review C4（撤销 ADR-0005 D3）：tooling_unsupported（全 404）= 覆盖缺口、进分母，
+    # **不产 Finding**（not_applicable 会出分母、语义错）。由 scope.not_covered 承载 = CoverageLedger 种子。
     r = next(x for x in session.runs if x.measurement_context["model"]["id"].endswith("2501"))
-    assert len(r.findings) == 1
-    assert r.findings[0].status == "not_applicable"
+    assert r.findings == []           # 无 Finding（不冒充"评过了"）
     assert r.comparisons == []
     assert r.scope.invalidity_reasons == ["tooling_unsupported"]
+    assert any("unsupported" in g for g in r.scope.not_covered)  # 进覆盖分母
+    assert r.scope.measurement_valid is False
 
 
 def test_attack_variant_cross_note(session):
@@ -117,7 +119,7 @@ def test_attack_variant_cross_note(session):
 
 def test_mixed_fidelity_note(session):
     notes = " ".join(session.cross_condition_notes)
-    assert "4/5" in notes
+    assert "3/5" in notes  # partner review C4：unsupported 跑无 Finding → 汇总级计数 4→3
 
 
 def test_invalidity_reasons_helper_orthogonal():
@@ -136,10 +138,11 @@ def test_invalidity_reasons_helper_orthogonal():
 
 
 def test_summary_run_tooling_branch_direct(rows):
-    # derive_summary_run 对 2501 行直接走 not_applicable 分支
+    # partner review C4：derive_summary_run 对 2501 行走 unsupported 分支（无 Finding、覆盖缺口）
     row2501 = next(r for r in rows if "2501" in r["model"])
     rep = derive_summary_run(row2501)
-    assert rep.findings[0].status == "not_applicable" and rep.comparisons == []
+    assert rep.findings == [] and rep.comparisons == []
+    assert rep.scope.invalidity_reasons == ["tooling_unsupported"]
 
 
 def test_tradeoff_class_flows_through_summary_path(session):

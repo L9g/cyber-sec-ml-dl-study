@@ -1,6 +1,8 @@
 # Ithuriel · D8 前置接缝契约（编码前固定，不建平台）
 
-日期：2026-07-10 · 状态：**v1.2** 共识草案（待最终确认）
+日期：2026-07-10 · 状态：**v1.3** · **D8 v1 = AI 切片 baseline（跨域通用性 provisional，见 ADR-0011）**
+
+> **⭐ v1 baseline 边界（2026-07-12，ADR-0011）**：D8 v1 **固化** AI prompt-injection bare/defended 切片的**已验证语义**（诚实闸门/joint_verdict/provenance 两臂/覆盖缺口——搭档审阅两批 + F2–F5 全收）；但 `Finding`/`Evidence`/`AssuranceReport`/`AiRunRecord`/`ComparisonSpec` 的**跨域通用性尚未证明**，明显带 AI 实验形状。**cross-domain contract: provisional**——由第二条切片（CE-UK-FW-03 确定性 config-inspection）**验证或推翻**。**不宣布 schema stable、不改 ontology 预判确定性检查字段。**
 
 > **v1.2 更新（2026-07-10）**：并入首个真跑（ADR `0002-first-real-run-deepseek-target-robustness.md`）的方法学修正——`measurement_valid=True` **≠ 有统计功效**，加 fail-closed `underpowered` 闸门（见 §7 附）。schema/profile 侧两条 GATE 字段（`prev_evidence_hash`、`AI-AGENT-PI-01` plugin 绑定）**继续 annotated-deferred**：当前 D8 harness（`scripts/run_bare_vs_defended.py`）是独立 AgentDojo runner、**不加载 profile/schema**，真实摩擦尚未触及这两个字段，按纪律不冒进迁移。
 >
@@ -47,6 +49,8 @@ model{id,version} · model_transport · attack_strength/adaptive_level · harnes
 detector_version · aggregate_rule_version · execution_backend ·
 sampling_plan{n_trials, seed_schedule, order_policy}
 ```
+> **v1.3 更新（2026-07-11，档 2 / ADR-0007）**：harness 现**真钉这些字段**（不再全 `_absent`）——`model.version`=response.model（served snapshot，治 `-latest` 别名坑）、`corpus_version`/`scenario.version`=agentdojo+suite、`detector_version`=defense+transformers 版本、`aggregate_rule_version`=`wilson-ci-v1`、`adaptive_level`=`static`、`temperature`={config_intent, on_wire}（记 `0.0→省略` 的诚实差）。**仍缺**：`seed_schedule`（AgentDojo 不发 seed、档 2 决策=只记录不注入）。溯源在 `ithuriel.provenance`（薄适配器归一化，harness 调）；历史无 provenance 的跑优雅退化=保持全 absent。
+
 Target 三分（保留「defense ∈ target config」所有权边界，又能表达同基础系统上两个实验组）：
 ```
 target_base_hash    = agent/model/tool 基础配置

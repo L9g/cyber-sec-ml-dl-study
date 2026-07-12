@@ -16,7 +16,7 @@ import hashlib
 import json
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 FindingStatus = Literal["pass", "fail", "not_applicable", "inconclusive"]
 VerdictMode = Literal["automatic", "llm_judge", "human_review"]
@@ -29,9 +29,43 @@ EvidenceCompleteness = Literal["per_trial", "summary_only"]
 # 但正对照在；tooling_unsupported=harness 根本没执行（如 OpenRouter 路由 404 无 tool use）。
 InvalidityReason = Literal[
     "no_positive_control", "quota_truncated", "underpowered", "tooling_unsupported",
+    # 差分删失（partner review D1/C1，2026-07-12）：bare/defended 的 n_valid 差过大 → delta 被
+    # 删失污染。seams §7 早有此语义（散文），此前只写 note、未进闸门 → 现并入 ¬assertable 子因。
+    "differential_attrition",
+    # 两臂 context 不变量漂移（partner review D2/C3，2026-07-12，第二批）：treatment(defense) 外的
+    # served_model/fingerprint/温度/语料/库 在 bare↔defended 间不等 = 未声明差异 → delta invalid。
+    "context_invariant_mismatch",
 ]
 # root_cause_enum（schema v0.6，advisory-only，无序集合，≥1，不设 primary）
 RootCause = Literal["P1", "P2", "P3", "P4", "P5", "P6", "OTHER", "UNDETERMINED"]
+# 防御的 security⊗utility tradeoff 类（advisory，据档 1 真跑反推，2026-07-11，ADR-0006）：
+# 只装**真实防御行为**三值；「归不了类」不塞进来，改由 tradeoff_unclassified_reason 承载（正交）。
+# blocks_preserving_utility 当前**未观测**（AgentDojo 无 sanitize-continue 防御、只有 abort 型）——
+# 定义留位、如实标 gap，不为它编 fixture。见 ADR-0006「明确延后」。
+TradeoffClass = Literal[
+    "ineffective",               # 强正对照下 ASR 未可断言下降（防御啥也没做）；spotlighting 1.0→1.0
+    "blocks_by_refusing",        # ASR 可断言↓ 但 defended under-attack utility 低（检到即 abort，不救活任务）
+    "blocks_preserving_utility",  # ASR 可断言↓ 且 defended utility 高（sanitize-continue）——未观测，定义留位
+]
+# tradeoff_class=None 时的原因（正交、非防御行为）：与 InvalidityReason 值有重叠是刻意（语义一致），
+# 但 utility_confounded 是**新**子因——security_delta 本身可断言(如 gpt-4o-mini −0.30)、confound 纯在
+# utility/tradeoff 轴（目标 under-attack 几乎不工作），故不并进 InvalidityReason（那只解释 security_delta）。
+TradeoffUnclassified = Literal[
+    "no_positive_control", "utility_confounded", "underpowered",
+    # defended utility 未测量（partner review C2，2026-07-12）：None ≠ 低 utility。此前 None 被
+    # 当 <BLOCK_UTIL 直接判 blocks_by_refusing（未知当低效用）→ 现单列，只有实测 util 才分类。
+    "utility_unmeasured",
+]
+
+# security⊗utility 联合裁定（partner review D3(a) + 搭档二轮反调和，2026-07-12）：**非 advisory、恒有值**。
+# 下游机器读**这个**判"防御实验能否形成可接受结论"，而非读 defended Finding.status（那只裁 security 轴、
+# utility=0 时仍 pass 会误导）。**独立算 raw inputs、不读 advisory 的 tradeoff_class**（避免不稳定
+# taxonomy 反向控制裁定）；两者只共享版本化 confound 判据、不互读输出。
+# **语义边界（已批准）**：评价「防御效果的**可归因**结论」，非「整个 defended target 的部署可接受性」——
+# 后者是未来 target-level 层，confound（靶机本就低效用）在此 fail-closed 为 inconclusive、不归罪于防御。
+#   security_failed=defended 仍被注入 · utility_failed=security 达标但可归因 utility<门 ·
+#   acceptable=两轴达标 · inconclusive=不可断言/未测/confound。
+JointVerdict = Literal["acceptable", "security_failed", "utility_failed", "inconclusive"]
 
 
 def canonical(obj: Any) -> bytes:
@@ -55,10 +89,17 @@ class AiRunRecord(BaseModel):
     model_version: Optional[str] = None  # 快照串；harness 未记 → None（gap）
     temperature: Optional[float] = None  # harness 未记 → None（gap）
     seed: Optional[int] = None           # provider 不支持或未记 → None
-    n_runs: int                          # = n_valid（有效 trial，非尝试数）
+    n_runs: int                          # schema：total attempts（= n_attempted）
+    # partner review C5（2026-07-12）：此前 n_runs 被塞成 n_valid → 违反 schema「n_runs=total attempts」
+    # 且丢了 execution-error accounting（harness 一直在算）。现恢复 n_runs=总尝试，另列有效/错误计数。
+    n_valid: Optional[int] = None        # 有 usable outcome 的 trial 数（= success_rate 分母）
+    n_execution_error: Optional[int] = None  # 执行错误（畸形 tool call / 429 截断 / 协议错）的 trial 数
     n_success: int                       # 攻击/失败条件触发的次数
+    # ⚠ success_rate 分母 = n_valid（**刻意偏离** schema 的 `n_success/n_runs`）：execution_error 不该
+    # 稀释 ASR（把"没跑成"算成"攻击没成功"是错的）。诚实记 n_execution_error 补偿此偏离。见 ADR-0009。
     success_rate: float
     asr_ci95: Optional[tuple[float, float]] = None  # Wilson CI（harness 已算）
+    utility_rate: Optional[float] = None  # under-attack utility（档 1：tradeoff 分类要读绝对 util，非 delta）
 
 
 class Finding(BaseModel):
@@ -89,6 +130,10 @@ class Finding(BaseModel):
                 raise ValueError("status=fail 必须带 severity（schema 不变量）")
         if self.status == "inconclusive" and not self.rationale:
             raise ValueError("status=inconclusive 必须带 rationale（schema 不变量）")
+        # partner review C4（2026-07-12）：not_applicable **出分母**、必须说明为何不适用；此前无校验
+        # 致 tooling_unsupported 静默产无理由 NA。（不适用 ≠ 未测到；后者是 unsupported，进分母。）
+        if self.status == "not_applicable" and not self.rationale:
+            raise ValueError("status=not_applicable 必须带 rationale（出分母需说明不适用理由）")
         if self.root_causes is not None and len(self.root_causes) < 1:
             raise ValueError("root_causes 是 ≥1 的无序集合（UNDETERMINED 为下限）")
         if not self.finding_id:
@@ -119,6 +164,16 @@ class ComparisonSpec(BaseModel):
     measurement_valid: bool
     invariants: dict[str, Any]           # treatment 外必须全等的字段（未声明差异→invalid）
     invalidity_reasons: list[InvalidityReason] = Field(default_factory=list)  # ¬assertable 的正交子因
+    # 档 1（ADR-0006）：从成对 (security_delta, defended_utility) 反推的 tradeoff 类；
+    # 归不了类时 tradeoff_class=None、reason 记原因（正交）。二者都 Optional 默认 → 不进任何哈希。
+    tradeoff_class: Optional[TradeoffClass] = None
+    tradeoff_unclassified_reason: Optional[TradeoffUnclassified] = None
+    # partner review D3(a)（2026-07-12）：security⊗utility 联合裁定，**非 advisory、恒有值**——
+    # 下游读它、不读 defended Finding.status（后者只裁 security 轴）。见 JointVerdict 定义。
+    joint_verdict: JointVerdict = "inconclusive"
+    # 裁定输入（可审计）：assertable/security_acceptable/utility_measured/utility_confounded/
+    # defended_utility/utility_threshold/rule_version → 下游能复核裁定怎么得来。默认空 → 不进哈希。
+    joint_verdict_inputs: dict[str, Any] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
 
 
@@ -149,6 +204,72 @@ class EvidenceManifest(BaseModel):
     index: dict[str, list[str]]          # config(bare/defended) → [trial_hash]
 
 
+# ── 控制注册表（档 3，ADR-0008）= 差异化层「标准→ontology」半边 ──────────────
+# profile（UK_Region_Profile_v0.2.yaml）里已声明的**只读**消费：控制元数据 + standards 注册表。
+# 不建 capability/plugin 匹配（GATE-2 defer）、不改 profile/ontology YAML。
+Severity = Literal["Low", "Medium", "High", "Critical"]  # 配 ontology scoring gating（High/Critical 否决）
+VerificationMethod = Literal["automated_test", "config_inspection", "document_review", "attestation"]
+
+
+class StandardRef(BaseModel):
+    """控制→标准的引用；source 必须在 profile standards 注册表声明（不变量，见 Registry 校验）。"""
+    model_config = ConfigDict(extra="ignore")
+    source: str                          # 标准 id，如 owasp_llm_top_10_2025
+    ref: str                             # 标准内定位，如 "LLM01 Prompt Injection"
+
+
+class Verification(BaseModel):
+    """三正交维之一体：method（执行）+ verdict（判定）+ requires_approval（授权闸门）。"""
+    model_config = ConfigDict(extra="ignore")
+    method: VerificationMethod
+    verdict: VerdictMode                  # automatic/llm_judge/human_review
+    requires_approval: bool = False
+    plugin: Optional[str] = None          # GATE-2 直接绑定，当**不透明元数据**消费（不做匹配）
+
+
+class ControlDefinition(BaseModel):
+    """profile 控制实例（只取本层消费的字段；probe_suite/csf2/plugins 等 extra 忽略）。"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    title: str
+    domain: Optional[str] = None
+    severity_if_failed: Optional[Severity] = None  # Finding.severity 于 fail 时继承此值
+    standards_refs: list[StandardRef]
+    verification: Verification
+
+
+class StandardEntry(BaseModel):
+    """standards 注册表一条：id → 权威/角色/链接（source 悬空校验的真相源）。"""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str
+    authority: Optional[str] = None
+    role: Optional[str] = None
+    url: Optional[str] = None
+    status: Optional[str] = None          # planned / (在用无此字段)
+
+
+class Registry(BaseModel):
+    """control + standards 注册表，加载时强制 schema 不变量：standards_ref.source 不得悬空。"""
+    standards: dict[str, StandardEntry]
+    controls: dict[str, ControlDefinition]
+
+    @model_validator(mode="after")
+    def _no_dangling_standard_source(self) -> "Registry":
+        for cid, c in self.controls.items():
+            for r in c.standards_refs:
+                if r.source not in self.standards:
+                    raise ValueError(
+                        f"control {cid}: standards_ref.source '{r.source}' "
+                        "未在 profile standards 注册表声明（悬空引用，违反 schema 不变量）")
+        return self
+
+    def referenced_standards(self, control_id: str) -> dict[str, StandardEntry]:
+        """某控制引用到的 standards 子集（source → 解析后的 StandardEntry）；审计闭环用。"""
+        return {r.source: self.standards[r.source]
+                for r in self.controls[control_id].standards_refs}
+
+
 class AssuranceReport(BaseModel):
     """把一格真跑的『建』产物打成一个可审计信封。"""
 
@@ -159,6 +280,10 @@ class AssuranceReport(BaseModel):
     findings: list[Finding]
     comparisons: list[ComparisonSpec]
     scope: ScopeStatement
+    # 档 3：解析后的控制（带 standards_refs）+ 引用到的 standards，挂**报告层**（范式化，
+    # 非 Finding 字段——Finding 只 control_id，standards 由 control_id 函数决定）。默认可空 → 不破旧构造。
+    control: Optional[ControlDefinition] = None
+    referenced_standards: dict[str, StandardEntry] = Field(default_factory=dict)
 
 
 class SessionReport(BaseModel):

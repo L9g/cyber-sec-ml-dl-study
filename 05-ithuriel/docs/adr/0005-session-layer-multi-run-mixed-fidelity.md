@@ -1,6 +1,11 @@
 # ADR 0005 — session 层（多条件 · 混合保真度 · invalid 子因）
 
-日期：2026-07-11 · 状态：draft（供讨论） · 关联：`0004-first-structured-finding-differentiator-layer.md`、`0003-injectable-target-and-first-assertable-defense-delta.md`、`docs/architecture-seams-D8.md` v1.2（#4/#5/#6/#8）、`results/experiments.csv`
+> **⚠ D3 已被 ADR-0009 撤销（2026-07-12，搭档审阅 C4）**：`tooling_unsupported` 不再编码成
+> `not_applicable` Finding（那会**出分母**、语义错）。404/工具不支持 = **unsupported、进分母**，
+> 现产 findings=[] + `scope.not_covered` 记覆盖缺口。本文 §表/§落地/§D3/§验证 中所有
+> 「2501→not_applicable」的表述以 ADR-0009 为准。其余决策不变。
+
+日期：2026-07-11 · 状态：draft（供讨论，**D3 superseded by 0009**） · 关联：`0004-first-structured-finding-differentiator-layer.md`、`0003-injectable-target-and-first-assertable-defense-delta.md`、`docs/architecture-seams-D8.md` v1.2（#4/#5/#6/#8）、`results/experiments.csv`
 
 ## 背景
 ADR-0004 建了单跑 `derive()`（一格全 per-trial 证据 → AssuranceReport）。但 2026-07-11 本会话真跑了 **5 个条件**（groq-8b / gpt-4o-mini / mistral-3.2 stock / mistral-2501 / mistral-3.2 `_no_names`），暴露单跑理想路径未表示的三个真实现实。**据这些摩擦反推 session 层字段，不提前按论文设计**（守 [[feedback-thin-slice-before-schema]]）。

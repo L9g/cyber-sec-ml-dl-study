@@ -151,13 +151,17 @@ if DEFENSE == "tool_filter" and kind != "openai":
 else:
     DEFENSE_EFF = DEFENSE
 
-# provenance（档 2）：openai kind 的 config_intent temperature = AgentDojo OpenAILLM 默认 0.0
-# （但发送时 `0.0 or NOT_GIVEN`→省略，见 provenance.record_response）；非 openai kind 记 None。
+# provenance（档 2）：openai kind 的 config_intent temperature = AgentDojo OpenAILLM 默认
+# （发送时 `0.0 or NOT_GIVEN`→省略，见 provenance.record_response）；非 openai kind 记 None。
 # partner review C3：**per-arm** provenance——bare/defended 各一份（defense 侧本就不同、是 treatment），
 # 各臂 record_response 独立填 served_model → provider 两臂间滚动部署时漂移可见。
 _LIBS = {"agentdojo": _lib_ver("agentdojo"), "openai": _lib_ver("openai"),
          "transformers": _lib_ver("transformers")}
-_temp_intent = 0.0 if kind == "openai" else None
+# code-review F4：读 AgentDojo OpenAILLM 的**真实默认** temperature（make_llm 不覆盖 → 签名默认
+# = llm.temperature 实际值），不硬编 0.0——AgentDojo 若改默认，config_intent 自动跟随、不静默失真。
+import inspect as _inspect
+_openai_temp_default = _inspect.signature(OpenAILLM.__init__).parameters["temperature"].default
+_temp_intent = _openai_temp_default if kind == "openai" else None
 PROV = {
     "bare": static_provenance(requested_model=MODEL, transport=kind, defense="none",
                               suite=SUITE, lib_versions=_LIBS, temperature_intent=_temp_intent),

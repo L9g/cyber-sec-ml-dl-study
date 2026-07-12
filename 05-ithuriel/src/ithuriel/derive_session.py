@@ -213,11 +213,13 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
         defended_utility=agg["defended"]["utility_rate"], bare_utility=agg["bare"]["utility_rate"],
         bare_asr_ci_low=(agg["bare"]["asr_ci95"] or [None])[0],
     )
+    # code-review F2：任一臂 utility 未测（None）→ delta 为 None，不拿 `or 0.0` 把未测当 0（会造
+    # 出 −bare_util 的假 delta）。与 harness `delta()`「b/d 任一 None → None」口径一致。
+    _ub, _ud = agg["bare"]["utility_rate"], agg["defended"]["utility_rate"]
     comparison = ComparisonSpec(
         baseline_finding_id=bare.finding_id, treatment_finding_id=defended.finding_id,
         security_delta_ASR=_f(row["delta_asr"]),
-        utility_delta=(agg["defended"]["utility_rate"] or 0.0) - (agg["bare"]["utility_rate"] or 0.0)
-        if agg["bare"]["utility_rate"] is not None else None,
+        utility_delta=round(_ud - _ub, 3) if (_ub is not None and _ud is not None) else None,
         assertable=assertable, underpowered=up, measurement_valid=mv,
         invariants={k: v for k, v in mctx.items() if k != "_absent_seams5_fields"},
         invalidity_reasons=reasons,
@@ -257,7 +259,10 @@ def cross_condition_notes(runs: list[AssuranceReport]) -> list[str]:
         bare_asr = {}
         for r in reps:
             for f in r.findings:
-                if f.target_ref.get("defense") == "none" and f.run_record:
+                # code-review F3：只纳入**真测得**的 bare ASR。sr=None（n_valid==0）时 success_rate 记
+                # 0.0（AiRunRecord 分母必填）——若当真 0 喂摆动检测会造假背离。用 n_valid 区分未测 vs 真 0。
+                if (f.target_ref.get("defense") == "none" and f.run_record
+                        and f.run_record.n_valid):
                     bare_asr[r.measurement_context["attack"]] = f.run_record.success_rate
         if len(bare_asr) >= 2:
             lo, hi = min(bare_asr.values()), max(bare_asr.values())

@@ -32,7 +32,7 @@
 
 ## 第二批（✅ 已落，见 ADR-0010）
 - **D2+C3｜真两臂 provenance/context**：per-arm `PROV[bare]/PROV[defended]` + 纯函数 `invariant_mismatch` 两臂 canonical equality（treatment 外漂移→`context_invariant_mismatch`→assertable False）。已实现，测试 63/63。
-- code-review 潜伏项 **F2**（derive_session utility_delta 的 `or 0.0`）与 C2 同族、相邻但不同点，**未纳入本两批**，下次单独收（连同 F3/F4/F5）。
+- code-review 潜伏项 **F2–F5** 已在两批之后单独收（commit 见分支）：F2 = derive_session `utility_delta` 任一臂未测→None（弃 `or 0.0` 假 delta）；F3 = `cross_condition_notes` 用 `n_valid` 区分未测 vs 真 0、跳过未测臂（防 success_rate=0.0 占位污染摆动检测）；F4 = harness 读 `OpenAILLM` 签名默认 temperature（弃硬编 0.0、不随 AgentDojo 漂移）；F5 = `SEAMS5_EXPECTED` 移至顶部常量区。测试 64→66。
 
 ## 验证
 `pytest src/tests/` = **60/60**（55 + 5 新：utility_unmeasured / joint_verdict 投影 / not_applicable-无-rationale-raise / differential_attrition-confound / n_runs-C5）。`derive` + `derive_session` CLI 端到端真跑冻结 fixture、输出如上。

@@ -1,0 +1,2 @@
+ERROR: command not recognized
+(this is not `ufw status verbose` output — wrong tool / truncated capture)

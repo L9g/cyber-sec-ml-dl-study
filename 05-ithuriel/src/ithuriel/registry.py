@@ -47,6 +47,11 @@ def default_control():
     return _cached_registry().controls[DEFAULT_CONTROL_ID]
 
 
+def control(control_id: str):
+    """按 id 取解析后的控制定义（slice 2 起多控制：如 CE-UK-FW-03）；缓存。"""
+    return _cached_registry().controls[control_id]
+
+
 def referenced_standards(control_id: str = DEFAULT_CONTROL_ID):
     """该控制引用到的 standards 子集（审计闭环：Finding→control_id→source→StandardEntry）。"""
     return _cached_registry().referenced_standards(control_id)

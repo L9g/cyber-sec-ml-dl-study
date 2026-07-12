@@ -25,3 +25,10 @@ D8 内部已验证语义可固定（防自身漂移）；但**跨域通用性是
 
 ## 验证
 本 ADR 为文档/契约边界记录，无代码改动。测试仍 66/66；`ontology_schema.yaml` 未动。
+
+## 后续（2026-07-12，slice 2 已回答）
+**跨域通用性 provisional → 基本验证通过**（ADR-0012）：CE-UK-FW-03 确定性 config-inspection 用
+AI 切片模型承载、**零 schema 改动、无字段被逼加**。留**软摩擦**（AI-flavored 词汇：`per_trial`/
+`measurement_valid`/`underpowered`/`root_cause_enum`）与一个**尚未被逼出**的候选抽象 `verdict_source`
+（详见 ADR-0012）。契约可从"AI-slice provisional"升为"AI + 确定性 config 两切片验证"，但仍**不宣布
+schema stable**——active-probe/RoE（slice 3）是第三个变量、可能再逼字段。

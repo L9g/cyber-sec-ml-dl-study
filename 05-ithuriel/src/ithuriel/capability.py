@@ -18,6 +18,7 @@ from pydantic import BaseModel
 CONTROL_CAPABILITY_REQUIREMENTS: dict[str, set[str]] = {
     "CE-UK-FW-03": {"host.firewall.default_policy.inspect"},
     "CE-UK-FW-01": {"host.network.port_scan"},          # slice 3（ADR-0013）
+    "CE-UK-SU-03": {"governance.change_register.review"},  # slice 4（ADR-0015，human_review）
 }
 # 该 bridge 每条映射的溯源（如实披露进报告；标 provisional + 迁移条件）。
 CAPABILITY_BRIDGE_PROVENANCE = {

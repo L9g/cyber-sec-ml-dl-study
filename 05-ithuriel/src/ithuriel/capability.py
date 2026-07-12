@@ -17,6 +17,7 @@ from pydantic import BaseModel
 # control_id → 所需 capability 集合。**provisional、code-local**（不改 profile）。
 CONTROL_CAPABILITY_REQUIREMENTS: dict[str, set[str]] = {
     "CE-UK-FW-03": {"host.firewall.default_policy.inspect"},
+    "CE-UK-FW-01": {"host.network.port_scan"},          # slice 3（ADR-0013）
 }
 # 该 bridge 每条映射的溯源（如实披露进报告；标 provisional + 迁移条件）。
 CAPABILITY_BRIDGE_PROVENANCE = {

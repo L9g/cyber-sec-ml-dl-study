@@ -1,6 +1,8 @@
 # Ithuriel · D8 前置接缝契约（编码前固定，不建平台）
 
-日期：2026-07-10 · 状态：**v1.2** 共识草案（待最终确认）
+日期：2026-07-10 · 状态：**v1.3** · **D8 v1 = AI 切片 baseline（跨域通用性 provisional，见 ADR-0011）**
+
+> **⭐ v1 baseline 边界（2026-07-12，ADR-0011）**：D8 v1 **固化** AI prompt-injection bare/defended 切片的**已验证语义**（诚实闸门/joint_verdict/provenance 两臂/覆盖缺口——搭档审阅两批 + F2–F5 全收）；但 `Finding`/`Evidence`/`AssuranceReport`/`AiRunRecord`/`ComparisonSpec` 的**跨域通用性尚未证明**，明显带 AI 实验形状。**cross-domain contract: provisional**——由第二条切片（CE-UK-FW-03 确定性 config-inspection）**验证或推翻**。**不宣布 schema stable、不改 ontology 预判确定性检查字段。**
 
 > **v1.2 更新（2026-07-10）**：并入首个真跑（ADR `0002-first-real-run-deepseek-target-robustness.md`）的方法学修正——`measurement_valid=True` **≠ 有统计功效**，加 fail-closed `underpowered` 闸门（见 §7 附）。schema/profile 侧两条 GATE 字段（`prev_evidence_hash`、`AI-AGENT-PI-01` plugin 绑定）**继续 annotated-deferred**：当前 D8 harness（`scripts/run_bare_vs_defended.py`）是独立 AgentDojo runner、**不加载 profile/schema**，真实摩擦尚未触及这两个字段，按纪律不冒进迁移。
 >

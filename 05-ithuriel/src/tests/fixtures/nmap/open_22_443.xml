@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sT -Pn -p 22,80,443 -oX - -- 192.0.2.10" start="1000000000" version="7.94" xmloutputversion="1.05">
+  <host>
+    <status state="up" reason="user-set"/>
+    <address addr="192.0.2.10" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22"><state state="open" reason="syn-ack"/><service name="ssh" method="table" conf="3"/></port>
+      <port protocol="tcp" portid="80"><state state="closed" reason="conn-refused"/></port>
+      <port protocol="tcp" portid="443"><state state="open" reason="syn-ack"/><service name="https" method="table" conf="3"/></port>
+    </ports>
+  </host>
+  <runstats><finished time="1000000001" elapsed="0.42" exit="success"/></runstats>
+</nmaprun>

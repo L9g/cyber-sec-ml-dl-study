@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -sT -Pn -p 22 -oX - -- 192.0.2.10"
+  <host>
+    <address addr="192.0.2.10" addrtype="ipv4"
+    (truncated / malformed capture — not well-formed XML)

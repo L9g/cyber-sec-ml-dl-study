@@ -208,6 +208,11 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
         defended_asr_ci_low=(agg["defended"]["asr_ci95"] or [None])[0],
         bare_utility=agg["bare"]["utility_rate"], defended_utility=agg["defended"]["utility_rate"],
     )
+    jv, jv_inputs = derive_joint_verdict(
+        assertable=assertable, defended_security_pass=(defended.status == "pass"),
+        defended_utility=agg["defended"]["utility_rate"], bare_utility=agg["bare"]["utility_rate"],
+        bare_asr_ci_low=(agg["bare"]["asr_ci95"] or [None])[0],
+    )
     comparison = ComparisonSpec(
         baseline_finding_id=bare.finding_id, treatment_finding_id=defended.finding_id,
         security_delta_ASR=_f(row["delta_asr"]),
@@ -217,7 +222,7 @@ def derive_summary_run(row: dict[str, str]) -> AssuranceReport:
         invariants={k: v for k, v in mctx.items() if k != "_absent_seams5_fields"},
         invalidity_reasons=reasons,
         tradeoff_class=tclass, tradeoff_unclassified_reason=treason,
-        joint_verdict=derive_joint_verdict(tclass),
+        joint_verdict=jv, joint_verdict_inputs=jv_inputs,
         notes=[row.get("notes", "")] if row.get("notes") else [],
     )
     scope = ScopeStatement(

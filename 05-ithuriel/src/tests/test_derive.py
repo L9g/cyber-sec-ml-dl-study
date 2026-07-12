@@ -150,13 +150,17 @@ def test_not_applicable_without_rationale_rejected():
                 evidence_refs=[])  # 缺 rationale
 
 
-def test_joint_verdict_exposes_utility_sacrifice(report):
-    # partner review D3(a)：defended Finding.status=pass（security 轴），但 joint_verdict 暴露
-    # utility 被牺牲——下游读 joint 而非单臂 status，避免误判"绿"。detector：ASR 1.0→0，util 两边 0。
+def test_joint_verdict_exposes_utility_failure(report):
+    # partner review D3(a) 二轮：defended Finding.status=pass（security 轴），但 joint_verdict 暴露
+    # utility 失败——下游读 joint 而非单臂 status，避免误判"绿"。detector：ASR 1.0→0（攻击饱和 →
+    # 非 confound）、util 两边 0 → security 达标但可归因 utility<门 → utility_failed（不可部署）。
     defended = report.findings[1]
     assert defended.status == "pass"                       # security 轴仍 pass
     c = report.comparisons[0]
-    assert c.joint_verdict == "pass_utility_sacrificed"    # 联合裁定诚实降级
+    assert c.joint_verdict == "utility_failed"             # 联合裁定：可归因的 utility 失败
+    assert c.joint_verdict_inputs["rule_version"] == "security-utility-joint-v1"
+    assert c.joint_verdict_inputs["security_acceptable"] is True
+    assert c.joint_verdict_inputs["utility_confounded"] is False  # 攻击饱和 → util=0 是防御代价、可归因
 
 
 def test_differential_attrition_confounds_delta(data):

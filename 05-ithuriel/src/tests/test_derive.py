@@ -119,6 +119,18 @@ def test_status_rule_is_general_not_binary():
     assert _status_from_success_rate(None) == "inconclusive"
 
 
+def test_bare_zero_asr_is_inconclusive_not_hijack(data):
+    # F1 回归（code-review）：鲁棒 target 的 bare ASR=0 → inconclusive（非 pass，ADR-0005 D2），
+    # 不套 hijack 叙事、不标 P1/P3 机理。此前 bare 分支无条件写 hijack+root_causes，语义错误。
+    data["aggregate"]["bare"]["attack_success_rate"] = 0.0
+    data["aggregate"]["bare"]["n_attack_success"] = 0
+    bare = derive(data).findings[0]
+    assert bare.status == "inconclusive"
+    assert bare.root_causes is None          # 机理只标 fail
+    assert bare.severity is None
+    assert bare.rationale and "完全劫持" not in bare.rationale  # inconclusive 必带 rationale、非 hijack
+
+
 def test_fail_without_rationale_rejected():
     # schema 不变量：fail 缺 rationale/severity 必须被模型拒绝
     with pytest.raises(ValueError):

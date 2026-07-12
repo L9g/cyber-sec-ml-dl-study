@@ -32,6 +32,9 @@ InvalidityReason = Literal[
     # 差分删失（partner review D1/C1，2026-07-12）：bare/defended 的 n_valid 差过大 → delta 被
     # 删失污染。seams §7 早有此语义（散文），此前只写 note、未进闸门 → 现并入 ¬assertable 子因。
     "differential_attrition",
+    # 两臂 context 不变量漂移（partner review D2/C3，2026-07-12，第二批）：treatment(defense) 外的
+    # served_model/fingerprint/温度/语料/库 在 bare↔defended 间不等 = 未声明差异 → delta invalid。
+    "context_invariant_mismatch",
 ]
 # root_cause_enum（schema v0.6，advisory-only，无序集合，≥1，不设 primary）
 RootCause = Literal["P1", "P2", "P3", "P4", "P5", "P6", "OTHER", "UNDETERMINED"]

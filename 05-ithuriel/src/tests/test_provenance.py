@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from ithuriel.derive import SEAMS5_EXPECTED, build_measurement_context, derive
-from ithuriel.provenance import record_response, static_provenance
+from ithuriel.provenance import invariant_mismatch, record_response, static_provenance
 
 FIXTURE = Path(__file__).parent / "fixtures" / "d8_run_detector.json"
 
@@ -40,6 +40,28 @@ def test_static_detector_pins_transformers_version():
     assert p["corpus"]["suite_family"] == "v1" and p["corpus"]["agentdojo_version"] == "0.1.35"
     assert p["aggregate_rule_version"] == "wilson-ci-v1" and p["adaptive_level"] == "static"
     assert p["served_model"] is None  # 待 response 填
+
+
+# ── 两臂不变量比较（partner review D2/C3，第二批；离线纯函数）───────────────
+def test_invariant_mismatch_treatment_excluded():
+    # 两臂仅 defense 侧不同（bare=none / defended=detector）+ served_model 相同 → **无** mismatch
+    # （defense/detector 是 treatment、故意排除）。这是"防御合法不同、不误报"的正对照。
+    bare, defended = _static("none"), _static("transformers_pi_detector")
+    r = record_response(bare, {}, _Resp("mistral-small-2506", "fp_A"))
+    d = record_response(defended, {}, _Resp("mistral-small-2506", "fp_A"))
+    mismatch, fields = invariant_mismatch(r, d)
+    assert mismatch is False and fields == {}
+
+
+def test_invariant_mismatch_served_model_drift():
+    # provider 在两臂间滚动部署 → served_model 漂移（C3 的核心场景）→ mismatch，列出差异值。
+    bare, defended = _static("none"), _static("transformers_pi_detector")
+    r = record_response(bare, {}, _Resp("mistral-small-2506", "fp_A"))
+    d = record_response(defended, {}, _Resp("mistral-small-2509", "fp_B"))  # 漂移
+    mismatch, fields = invariant_mismatch(r, d)
+    assert mismatch is True
+    assert fields["served_model"] == {"bare": "mistral-small-2506", "defended": "mistral-small-2509"}
+    assert "system_fingerprint" in fields
 
 
 def test_static_non_detector_no_transformers_version():

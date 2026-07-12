@@ -25,7 +25,7 @@ from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 # 薄适配器：把溯源归一化进 ithuriel evidence schema（建层单一真相），harness 只填值（档 2, ADR-0007）。
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-from ithuriel.provenance import static_provenance, record_response
+from ithuriel.provenance import static_provenance, record_response, invariant_mismatch
 
 
 def _lib_ver(name):
@@ -108,7 +108,9 @@ try:
 except Exception as e:
     die(f"import agentdojo 失败（装了吗?）: {e}")
 
-def make_llm():
+def make_llm(prov):
+    # prov = **本臂**的 provenance dict（partner review C3：per-arm，不再共享全局单值 → 各臂独立
+    # 记 served_model，provider 在两臂间滚动部署时漂移才可见、可比）。
     if kind == "openai":
         import openai
         client = openai.OpenAI(api_key=api_key, base_url=base_url)  # base_url None = 官方
@@ -122,7 +124,7 @@ def make_llm():
                     if isinstance(m, dict) and m.get("role") == "developer":
                         m["role"] = "system"
             resp = _orig_create(*args, **kwargs)
-            record_response(PROV, kwargs, resp)
+            record_response(prov, kwargs, resp)
             return resp
         client.chat.completions.create = _create
         llm = OpenAILLM(client, MODEL)
@@ -151,15 +153,20 @@ else:
 
 # provenance（档 2）：openai kind 的 config_intent temperature = AgentDojo OpenAILLM 默认 0.0
 # （但发送时 `0.0 or NOT_GIVEN`→省略，见 provenance.record_response）；非 openai kind 记 None。
-PROV = static_provenance(
-    requested_model=MODEL, transport=kind, defense=DEFENSE_EFF, suite=SUITE,
-    lib_versions={"agentdojo": _lib_ver("agentdojo"), "openai": _lib_ver("openai"),
-                  "transformers": _lib_ver("transformers")},
-    temperature_intent=0.0 if kind == "openai" else None,
-)
+# partner review C3：**per-arm** provenance——bare/defended 各一份（defense 侧本就不同、是 treatment），
+# 各臂 record_response 独立填 served_model → provider 两臂间滚动部署时漂移可见。
+_LIBS = {"agentdojo": _lib_ver("agentdojo"), "openai": _lib_ver("openai"),
+         "transformers": _lib_ver("transformers")}
+_temp_intent = 0.0 if kind == "openai" else None
+PROV = {
+    "bare": static_provenance(requested_model=MODEL, transport=kind, defense="none",
+                              suite=SUITE, lib_versions=_LIBS, temperature_intent=_temp_intent),
+    "defended": static_provenance(requested_model=MODEL, transport=kind, defense=DEFENSE_EFF,
+                                  suite=SUITE, lib_versions=_LIBS, temperature_intent=_temp_intent),
+}
 
-def build_pipeline(defense):
-    kwargs = dict(llm=make_llm(), model_id=None, system_message_name=None,
+def build_pipeline(cfg, defense):
+    kwargs = dict(llm=make_llm(PROV[cfg]), model_id=None, system_message_name=None,
                   system_message=SYSMSG, tool_output_format=None)
     kwargs["defense"] = defense  # None = bare
     pipe = AgentPipeline.from_config(PipelineConfig(**kwargs))
@@ -205,7 +212,7 @@ print(f"[harness] provider={prov} model={MODEL} transport={'openai-compat' if ki
       f" base_url={base_url or 'default'} defense={DEFENSE_EFF} attack={ATTACK}"
       f" scenario={SUITE}/{USER_TASK}+{INJ_TASK} n={N_TRIALS} (interleaved)")
 
-pipes = {"bare": build_pipeline(None), "defended": build_pipeline(DEFENSE_EFF)}
+pipes = {"bare": build_pipeline("bare", None), "defended": build_pipeline("defended", DEFENSE_EFF)}
 trials = {"bare": [], "defended": []}
 order = ["bare", "defended"]
 for i in range(N_TRIALS):
@@ -262,6 +269,12 @@ if A["bare"]["n_valid"] and A["defended"]["n_valid"]:
         notes.append(f"underpowered: bare ASR CI95{A['bare']['asr_ci95']} ∩ defended CI95{A['defended']['asr_ci95']} "
                      f"重叠 → security_delta 不可断言（noise-dominated, seams v1.2 §7）")
 
+# partner review D2/C3：两臂 provenance 在非-treatment 不变量上比较（treatment=defense 已排除）。
+# 任一漂移（provider 滚动部署 → served_model/fingerprint；库/语料/温度变）= 未声明差异 → delta invalid。
+prov_invariant_mismatch, prov_mismatch_fields = invariant_mismatch(PROV["bare"], PROV["defended"])
+if prov_invariant_mismatch:
+    notes.append(f"provenance invariant mismatch（treatment 外漂移）: {prov_mismatch_fields} → delta 判 invalid（seams #5 fail-closed）")
+
 def delta(k):
     b, d = A["bare"][k], A["defended"][k]
     return None if (b is None or d is None) else round(d - b, 3)
@@ -271,15 +284,20 @@ out = {"meta": {"generated_at": datetime.datetime.now(datetime.timezone.utc).iso
                 "defense": DEFENSE_EFF, "attack": ATTACK, "scenario": f"{SUITE}/{USER_TASK}+{INJ_TASK}",
                 "n_trials_per_config": N_TRIALS, "order_policy": "interleaved",
                 "harness": "scripts/run_bare_vs_defended.py",
-                "provenance": PROV},
+                # C3：meta.provenance = bare 臂（共享不变量的 canonical；两臂已验证全等，否则下面标 mismatch）。
+                # defended 臂溯源经 provenance_mismatch_fields 归档（仅当漂移）——全等时 bare 无损代表。
+                "provenance": PROV["bare"]},
        "aggregate": A, "measurement_valid": measurement_valid, "validity_notes": notes,
        "differential_attrition_n_valid_gap": da,
        "differential_attrition_confounded": differential_attrition_confounded,
+       "provenance_invariant_mismatch": prov_invariant_mismatch,
+       "provenance_mismatch_fields": prov_mismatch_fields,
        "underpowered": underpowered,
        "security_delta_ASR": delta("attack_success_rate"),
-       # C1：assertable = valid ∧ ¬underpowered ∧ ¬differential_attrition_confounded
+       # C1+D2：assertable = valid ∧ ¬underpowered ∧ ¬attrition_confounded ∧ ¬provenance_invariant_mismatch
        "security_delta_assertable": (measurement_valid and underpowered is False
-                                     and not differential_attrition_confounded),
+                                     and not differential_attrition_confounded
+                                     and not prov_invariant_mismatch),
        "utility_delta": delta("utility_rate"),
        "trials": trials}
 os.makedirs("results", exist_ok=True)
@@ -292,12 +310,15 @@ for cfg in ("bare", "defended"):
     print(f"  {cfg:8s} ASR={a['attack_success_rate']} CI95{a['asr_ci95']} utility={a['utility_rate']} "
           f"(n_valid={a['n_valid']}, err={a['n_execution_error']})")
 sd = delta("attack_success_rate")
-assertable = measurement_valid and underpowered is False
+assertable = out["security_delta_assertable"]   # 用实际折进全闸门的值（含 attrition/provenance）
 print(f"  security_delta(ASR)={sd}  utility_delta={delta('utility_rate')}")
 print(f"  measurement_valid={measurement_valid}  underpowered={underpowered}  "
+      f"attrition_confounded={differential_attrition_confounded}  prov_mismatch={prov_invariant_mismatch}  "
       f"→ security_delta {'可断言' if assertable else '不可断言'}")
 for n in notes: print(f"    ! {n}")
-print(f"  provenance: requested={PROV['requested_model']} served={PROV['served_model']} "
-      f"fingerprint={PROV['system_fingerprint']} temp(intent/wire)={PROV['temperature']['config_intent']}/"
-      f"{PROV['temperature']['on_wire']}")
+pb, pd = PROV["bare"], PROV["defended"]
+print(f"  provenance: requested={pb['requested_model']} served bare={pb['served_model']} "
+      f"defended={pd['served_model']} fingerprint bare={pb['system_fingerprint']} "
+      f"defended={pd['system_fingerprint']}"
+      + ("  ⚠ MISMATCH" if prov_invariant_mismatch else ""))
 print(f"\n[harness] 写入 {fn}")

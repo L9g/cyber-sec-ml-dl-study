@@ -42,6 +42,33 @@ def static_provenance(*, requested_model: str, transport: str, defense: str, sui
     }
 
 
+# bare/defended 两臂**必须全等**的非-treatment 不变量（partner review D2/C3，2026-07-12）。
+# treatment 侧（defense / detector）**故意排除**——那正是 ComparisonSpec 的 treatment，合法不同。
+# 其余任一漂移（provider 滚动部署 → served_model/fingerprint 变；库/语料/温度变）= 未声明差异
+# → fail-closed 判 delta invalid。served_* 由各臂 record_response 独立填（治 C3 全局单值掩盖漂移）。
+def _invariant_view(p: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "served_model": p.get("served_model"),
+        "system_fingerprint": p.get("system_fingerprint"),
+        "temperature_on_wire": (p.get("temperature") or {}).get("on_wire"),
+        "corpus": p.get("corpus"),
+        "libs": p.get("libs"),
+        "adaptive_level": p.get("adaptive_level"),
+        "aggregate_rule_version": p.get("aggregate_rule_version"),
+    }
+
+
+def invariant_mismatch(bare: dict[str, Any], defended: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """两臂 provenance 在非-treatment 不变量上的 canonical 比较。**纯函数、离线可测**。
+
+    返回 (mismatch?, {field: {bare, defended}})。空 dict = 全等（invariant 成立）。任一字段不等 →
+    该 defense_delta 的"未声明差异"→ 调用方须折进 ¬assertable（seams #5 fail-closed）。
+    """
+    b, d = _invariant_view(bare), _invariant_view(defended)
+    fields = {k: {"bare": b[k], "defended": d[k]} for k in b if b[k] != d[k]}
+    return (len(fields) > 0, fields)
+
+
 def _is_not_given(v: Any) -> bool:
     # openai SDK 的 NOT_GIVEN/Omit 哨兵：类型名判定，避开哨兵怪异 __eq__；None=未传同样算省略。
     return v is None or type(v).__name__ in ("NotGiven", "Omit")

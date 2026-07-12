@@ -267,7 +267,10 @@ def build_comparison(bare: Finding, defended: Finding, data: dict[str, Any],
     # treatment=defense_hash；其余 invariant 全等（未声明差异→invalid，fail-closed，seams #5）
     invariants = {k: v for k, v in mctx.items() if k != "_absent_seams5_fields"}
     ab, ad = data["aggregate"]["bare"], data["aggregate"]["defended"]
-    assertable = data["security_delta_assertable"]
+    # partner review D2/C3：harness 已把 provenance 两臂不匹配折进 security_delta_assertable；
+    # 这里 belt-and-suspenders 再折一次（防上游漏折）并显式列子因。历史跑无此键 → False、优雅退化。
+    prov_mismatch = bool(data.get("provenance_invariant_mismatch"))
+    assertable = data["security_delta_assertable"] and not prov_mismatch
     tclass, treason = derive_tradeoff_class(
         measurement_valid=data["measurement_valid"], assertable=assertable,
         security_delta=data["security_delta_ASR"],
@@ -279,6 +282,8 @@ def build_comparison(bare: Finding, defended: Finding, data: dict[str, Any],
     reasons = list(invalidity_reasons or [])
     if data.get("differential_attrition_confounded") and "differential_attrition" not in reasons:
         reasons.append("differential_attrition")
+    if prov_mismatch and "context_invariant_mismatch" not in reasons:
+        reasons.append("context_invariant_mismatch")
     return ComparisonSpec(
         baseline_finding_id=bare.finding_id, treatment_finding_id=defended.finding_id,
         security_delta_ASR=data["security_delta_ASR"], utility_delta=data["utility_delta"],

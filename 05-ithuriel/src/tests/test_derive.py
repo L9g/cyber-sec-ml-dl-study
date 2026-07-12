@@ -167,3 +167,14 @@ def test_differential_attrition_confounds_delta(data):
     c = derive(data).comparisons[0]
     assert c.assertable is False
     assert "differential_attrition" in c.invalidity_reasons
+
+
+def test_context_invariant_mismatch_invalidates_delta(data):
+    # partner review D2/C3（第二批）：两臂 provenance 非-treatment 不变量漂移 → delta invalid。
+    # belt-and-suspenders：即便 data 里 assertable 仍 True，derive 也据 mismatch 折成 False。
+    data["provenance_invariant_mismatch"] = True
+    data["provenance_mismatch_fields"] = {"served_model": {"bare": "m-2506", "defended": "m-2509"}}
+    assert data["security_delta_assertable"] is True   # 原本可断言（detector fixture）
+    c = derive(data).comparisons[0]
+    assert c.assertable is False                        # 被 mismatch 折掉
+    assert "context_invariant_mismatch" in c.invalidity_reasons

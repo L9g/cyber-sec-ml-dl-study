@@ -31,6 +31,7 @@ from ithuriel.executor import (
 )
 from ithuriel.models import (
     AssuranceReport,
+    AutomaticRuleProvenance,
     EvidenceManifest,
     Finding,
     ScopeStatement,
@@ -150,6 +151,10 @@ def build_report(*, action: NetworkPortScanAction, roe: RoEAuthorization, nmap_x
         rationale=rationale,
         run_record=None,          # FRICTION（同 slice 2）：探测无 AI run；但探测是**测量**（见下 verdict_source）
         root_causes=None, evidence_completeness="per_trial",
+        # Step 4（ADR-0016）：确定性规则作用于（mock）执行观察 → automatic_rule + deterministic_observation；
+        # 与 config 同变体，差异=target_fidelity（mock vs frozen-fixture），Claim 层从 execution_backend 派。
+        verdict_provenance=AutomaticRuleProvenance(
+            rule_version=RULE_VERSION, measurement_kind="deterministic_observation"),
     )
     scope = ScopeStatement(
         claim="CE-UK-FW-01 exposed-services 单主机主动探测（**mock backend、零真实网络 I/O**）；非合规通过。",

@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from ithuriel.derive import (
     CONTROL_ID,
+    STATUS_RULE_VERSION,
     build_measurement_context,
     build_target_ref,
     derive,
@@ -33,6 +34,7 @@ from ithuriel.registry import default_control, referenced_standards
 from ithuriel.models import (
     AiRunRecord,
     AssuranceReport,
+    AutomaticRuleProvenance,
     ComparisonSpec,
     EvidenceManifest,
     Finding,
@@ -157,6 +159,10 @@ def _summary_finding(cfg: str, meta: dict[str, Any], agg: dict[str, Any],
         rationale=rationale, run_record=run_record,
         root_causes=["P1", "P3"] if status == "fail" else None,
         evidence_completeness="summary_only",
+        # Step 4（ADR-0016）：汇总级仍是 AI 探针 = statistical_trials（与单跑 derive() 一致，守 uniform；
+        # completeness=summary_only 是证据保真度、与 measurement_kind 正交）。
+        verdict_provenance=AutomaticRuleProvenance(
+            rule_version=STATUS_RULE_VERSION, measurement_kind="statistical_trials"),
     )
 
 

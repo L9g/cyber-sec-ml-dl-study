@@ -1,0 +1,6 @@
+{
+  "entries": [
+    {"exception_id": "EXC-001", "justification_ref": "CHG-2201", "review_date": "2026-06-01", "remediation_action": "vendor patch scheduled Q3 2026"},
+    {"exception_id": "EXC-002", "justification_ref": "CHG-2245", "review_date": "2026-06-15", "remediation_action": "compensating control (WAF rule) in place; fix tracked"}
+  ]
+}

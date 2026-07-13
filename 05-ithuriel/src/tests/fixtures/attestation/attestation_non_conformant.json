@@ -1,0 +1,7 @@
+{
+  "reviewer": "j.smith (security lead)",
+  "review_date": "2026-06-30",
+  "decision": "non_conformant",
+  "statement": "EXC-003 has no justification reference and no remediation owner/timeline; exception tracking is incomplete.",
+  "attested_refs": ["EXC-003"]
+}

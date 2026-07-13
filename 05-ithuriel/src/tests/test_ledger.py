@@ -133,3 +133,37 @@ def test_ledger_carries_all_outcomes():
     assert len(ledger.outcomes) == 3
     assert {o.control_id for o in ledger.outcomes} == {"AI-AGENT-PI-01", "CE-UK-FW-03", "CE-UK-FW-01"}
     assert ledger.generated_from == ["a", "b"]
+
+
+# ── slice 4 集成：human_review 控制进 rollup（ADR-0015）───────────────────────
+def _su03(decision="conformant"):
+    from ithuriel.attestation import ExceptionEntry, ReviewAttestation
+    from ithuriel.attestation import build_report as su03_report
+    reg = [ExceptionEntry(exception_id="EXC-1", justification_ref="CHG-1")]
+    att = ReviewAttestation(reviewer="r", review_date="2026-06-30", decision=decision, statement="s")
+    return su03_report(register=reg, attestation=att, host_id="h")
+
+
+def test_human_review_control_rolls_up_by_domain():
+    # SU-03（human_review、Low、vulnerability_management）与 automatic 控制同框 rollup。
+    o = control_outcome(_su03("conformant"))
+    assert o.control_id == "CE-UK-SU-03" and o.domain == "vulnerability_management"
+    assert o.severity == "Low" and o.status == "pass"
+    ledger = build_ledger([_su03("conformant")])
+    vm = _axis(ledger, "vulnerability_management")
+    assert (vm.applicable, vm.passed, vm.coverage, vm.not_ready) == (1, 1, 1.0, False)
+
+
+def test_low_severity_fail_does_not_gate():
+    # SU-03 human_review 裁定 non_conformant（Low）→ 覆盖降、但 Low 不触发 gating。
+    ledger = build_ledger([_su03("non_conformant")])
+    vm = _axis(ledger, "vulnerability_management")
+    assert vm.passed == 0 and vm.coverage == 0.0 and vm.not_ready is False
+
+
+def test_four_control_ledger_all_domains():
+    # 四形状全在一个 ledger：AI / config / probe / human_review 跨 3 域。
+    ledger = build_ledger([_pi01(), _fw03(), _fw01("pass"), _su03("conformant")])
+    assert {a.key for a in ledger.axes} == {"ai_agent_security", "network_security",
+                                            "vulnerability_management"}
+    assert len(ledger.outcomes) == 4

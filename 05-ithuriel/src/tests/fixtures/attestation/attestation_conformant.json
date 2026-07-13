@@ -1,0 +1,7 @@
+{
+  "reviewer": "j.smith (security lead)",
+  "review_date": "2026-06-30",
+  "decision": "conformant",
+  "statement": "All open exceptions are tracked with justification and a remediation action/timeline; reviewed at monthly change board.",
+  "attested_refs": ["EXC-001", "EXC-002"]
+}

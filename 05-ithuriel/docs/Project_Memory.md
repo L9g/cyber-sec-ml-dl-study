@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-07-10
+Updated: 2026-07-13
 
 ## Current Project
 
@@ -142,3 +142,97 @@ Then apply:
 - `AI-AGENT-PI-01` executable fields.
 - RoE decision table.
 - Evidence grading.
+
+## Partner Project Review (2026-07-12)
+
+- A design/architecture/code review was completed under the instructions in `docs/review-brief-for-partner-agent.md`.
+- The full review is stored at `reports/partner-review-2026-07-12.md`.
+- Baseline verification at review time: `.venv/bin/python -m pytest src/tests/ -q` reported `55 passed`.
+- Review verdict: the Base=borrow / Differentiator=build boundary and thin-slice discipline are sound. The AgentDojo runner should remain a thin borrowed-layer wrapper; no deferred Bucket-B platform machinery was recommended.
+- Explicitly confirmed as sound:
+  - `bare ASR=0 -> inconclusive`, consistently applied in full-run and session paths;
+  - separate `measurement_valid` and `underpowered` fields, with CI overlap failing closed in the basic case;
+  - content-addressed manifests and stable canonical JSON rather than a global linear evidence chain;
+  - retaining the unobserved `blocks_preserving_utility` definition without fabricating a fixture;
+  - the registry audit path `Finding.control_id -> standards_refs -> registered source`.
+- Review findings: 3 design, 5 code, 0 discipline findings.
+- Issues identified at review time (the later development discussion states that D8 closure is now done; treat this list as review history, not the current implementation backlog):
+  1. Differential attrition currently adds only a note; it can still leave `security_delta_assertable=true`. The frozen seam requires a confounded/inconclusive, fail-closed result.
+  2. `ComparisonSpec.invariants` currently stores one shared MeasurementContext rather than comparing baseline and treatment contexts. It therefore cannot enforce “only defense_hash may differ”.
+  3. A defended Finding can be `pass` solely because ASR is zero even when utility is zero. The security-utility joint verdict remains advisory rather than machine-enforced.
+  4. Missing defended utility is classified as `blocks_by_refusing`; it should remain unclassified/utility-unmeasured.
+  5. A run-global first-response provenance snapshot can hide served-model or fingerprint drift between bare and defended arms.
+  6. `tooling_unsupported` is emitted as reasonless `not_applicable`, conflicting with the frozen ontology: unsupported is a coverage gap, while genuine not-applicable is outside the denominator and requires a reason.
+  7. `AiRunRecord.n_runs` is populated with `n_valid`, although the frozen schema defines it as total attempts; summary reports can consequently lose execution-error accounting.
+- These findings are not requests to build PlanCompiler, RunOrchestrator, CoverageLedger, ExperimentManager, Claim Engine, or other deferred machinery. Fixes should remain minimal extensions of the existing D8 seams.
+
+## Post-D8 Slice Direction (2026-07-13)
+
+Current status and contract posture:
+
+- D8 closure is complete according to the subsequent project discussion. The next step is not another D8 clean-up pass.
+- Synchronize ADRs, fixtures, reports, and documentation for consistency, but describe the result as **`D8 v1 AI-slice baseline`**.
+- Do not claim that D8 is already a stable cross-domain contract. Its generality remains **provisional** until a deterministic config-inspection slice validates or breaks the current Finding/Evidence/Assurance shapes.
+- `Finding.status` remains a single-control/security-axis verdict. A defended PI Finding may correctly be `pass` when ASR is zero even if utility is zero; consumers must not interpret that as a defense-level pass.
+- The report/comparison layer owns the non-advisory security-utility joint verdict. `tradeoff_class` remains advisory and must not become the gating mechanism.
+- Joint-verdict rules read raw comparison inputs independently of `tradeoff_class`. The highest-priority inconclusive gate includes measurement/comparison invalidity, underpower, differential attrition, required metrics unmeasured, and utility confounding. The confound predicate is `bare_utility <= U_FLOOR` together with an unsaturated/uncertain bare attack (`bare_asr_ci_low` absent or `< TAU`). This prevents target weakness from being misattributed to the defense.
+- If a verdict is about attributable defense effect, utility confounding yields `inconclusive`. A future deployment-acceptability verdict is a different target-level concept and must not be mixed into `ComparisonSpec`.
+
+### Slice 2 — Deterministic config inspection
+
+- Slice 2 introduces exactly one new variable: can the existing Finding/registry/scope/assurance contract represent a deterministic `n=1`, no-CI config inspection?
+- Selected control: **`CE-UK-FW-03`**, not active-probe `CE-UK-FW-01`. FW-03 checks that inbound traffic follows default-deny or explicitly justified allow rules.
+- Selected input: frozen English `ufw status verbose` output. UFW is deliberately chosen for its thin line-oriented `Default: deny (incoming)` evidence; this slice tests the contract, not firewall ecosystem coverage.
+- Record the normalized acquisition intent as `LC_ALL=C ufw status verbose`. Consume a fixture first; do not add privileged live execution to Slice 2.
+- Minimal outcomes: active + incoming deny -> pass; active + incoming allow -> fail; missing/unknown/truncated format -> inconclusive. `Status: inactive` is inconclusive unless the TargetSnapshot explicitly establishes UFW as the sole authoritative enforcement plane.
+- Capability is a code-local provisional bridge, not a reinterpretation of profile plugin identity:
+  - control requirement: `CE-UK-FW-03 -> host.firewall.default_policy.inspect`;
+  - adapter `ufw_status_verbose` provides that capability;
+  - matching is a single set-inclusion check, with no planner, ranking, or registry service.
+- Keep `verification.plugin=firewall_default_deny_check` as opaque legacy/profile metadata. Do not use the plugin id as the capability key and do not modify the frozen profile merely for this first instance.
+- Let the slice reveal whether a general `verdict_source`, deterministic rule record, or other schema is actually needed. Start with `run_record=None`, `comparisons=[]`, and real RawArtifact -> Observation -> versioned rule -> Finding friction.
+
+### Slice 3 — Side-effect authorization/Executor PEP
+
+- Slice 3 introduces exactly one new variable: authorization and execution-fact handling for a side-effect-capable action. It reuses the contract tested by Slices 1 and 2.
+- Use `CE-UK-FW-01` with a code-local provisional requirement `host.network.port_scan` and a thin nmap adapter.
+- Build real PEP/policy logic but use fixture-first **MockBackend dispatch**. No subprocess, socket, real network egress, or blast radius occurs in this slice. Real nmap execution is a separate later validation step.
+- The minimum path is: structured Action -> canonical policy-relevant hash -> preflight policy check -> pre-dispatch independent re-check -> MockBackend -> ExecutionReceipt + RawArtifactRef -> Ithuriel parser -> Observation -> rule -> Finding.
+- Do not accept arbitrary `binary + args` as the policy surface. Prefer a structured `NetworkPortScanAction` (literal target IP, ports, scan profile) and compile a fixed argv template inside the Executor. The allowlist governs action type and argument grammar, not only the binary name; never invoke a shell.
+- Restrict this slice to literal IP targets (prefer RFC 5737 test space such as `192.0.2.10`); hostname resolution/DNS rebinding is outside this slice.
+- RoE target authorization is mandatory and orthogonal to `verification.requires_approval`. For FW-01:
+  - target-scoped RoE authorization is always required;
+  - `requires_approval=false` means no additional just-in-time human approval is required;
+  - therefore Slice 3 validates authorization and Action-hash-bound policy decisions, not a fabricated human approval flow. Build `ApprovalGrant` only when a genuinely approval-requiring action appears.
+- Empty allowed-target scope denies by default. Target outside the authorized host/CIDR, Action mutation after preflight, RoE/policy version change, or disallowed action/parameters must fail before backend dispatch.
+- A RoE denial is **`out_of_scope` / `authorization_missing`**, not `unsupported`, `not_applicable`, or `inconclusive`. Prefer no Finding plus a structured coverage gap; until that type exists, record it in `scope.not_covered` without borrowing an incorrect Finding status.
+- Mock receipts must state `backend=mock` and `external_side_effects_performed=false`, reference the frozen fixture, and never imply a real target was scanned. Reports remain `assurance_level:none` and apply only to the synthetic fixture target.
+- `ExecutionReceipt` is execution fact, not normalized Evidence and never a Finding. Backend output flows through RawArtifactRef and is interpreted only by the Ithuriel parser/rule layer.
+- Prefer nmap XML for a machine-consumed fixture if no fixture format is already committed; grepable output is acceptable for a deliberately narrow existing fixture.
+- `CE-UK-FW-01` means exposed services are both **identified and justified**. Nmap only identifies open services. Passing the control additionally requires a target-scoped declared/justified service inventory. Observed but undeclared ports -> fail; scan succeeds but no justification inventory -> inconclusive; all observed services declared and justified -> pass. Do not hide a static allowed-port list inside the parser.
+- Key Slice 3 tests include: Action hash stability and mutation invalidation; empty/unauthorized target denial; preflight-to-dispatch RoE revocation; no mock dispatch on denial; fixed argv/target consistency; mock receipt honesty; denial recorded as out-of-scope gap; ExecutionReceipt carrying no verdict; and the three service-justification outcomes above.
+
+These slice plans preserve the project discipline: one new variable per slice, fixture-first, build only differentiating contracts/policy semantics, and do not introduce scheduler, IPC, planner, CoverageLedger, or other Bucket-B machines prematurely.
+
+### Verdict provenance and the Claim layer (ADR 0016, merged)
+
+By this point four adjudication shapes are in `main` and validate the differentiator layer across domains: AI prompt-injection probing (non-deterministic), deterministic config inspection (`CE-UK-FW-03`), an active probe behind the Executor/PEP (`CE-UK-FW-01`), and human-review attestation (`CE-UK-SU-03`, ADR 0015), together with a cross-control CoverageLedger (ADR 0014). One Finding/Evidence/Assurance/Ledger shape carries all four with no `ontology_schema.yaml` change.
+
+This slice adds the first code on the differentiator layer's standards-to-assurance-conclusion upper half; earlier slices built the evidence/Finding lower half. It introduces one new variable: a consumer that must assign confidence according to how a verdict was reached.
+
+- **Forcing problem.** `verdict_mode=automatic` collapses three distinct confidence regimes: statistical AI trials bounded by run count and confidence interval, deterministic configuration rules that are bit-reproducible, and active probes that apply deterministic rules to mock execution and are bounded by fidelity. A consumer reading `verdict_mode` cannot tell them apart. Today only `run_record is None` separates AI from non-AI, and the three non-AI shapes bury their provenance under shape-specific keys in the `measurement_context` free dict. A throwaway spike made the brittleness concrete: probe and config both carry `rule_version`, so any key-sniffing extractor must test `execution_receipt` before `rule_version`, or a probe is silently misread as a configuration check.
+- **Design reshaped by partner review.** A flat four-value `verdict_source` enum, which ADR 0015 had predicted, is not orthogonal: the adjudication mechanism for AI, config, and probe is the same deterministic rule, only the measurement regime differs, and only human attestation is a genuinely different adjudication authority. The result is a typed, discriminated `verdict_provenance` union with two variants: `AutomaticRuleProvenance` (carrying `rule_version` and a `measurement_kind` of either `statistical_trials` or `deterministic_observation`) and `HumanAttestationProvenance` (carrying `decision_evidence_ref` and `mapping_version`). This dissolves the `rule_version` ambiguity: probe and config map to the same variant and are later distinguished by target fidelity derived from `execution_backend`.
+- **Confidence as a narrowed warrant, not a single tier.** A Claim states on what basis a conclusion holds and only for what scope, rather than which kind of automatic it is. `ConfidenceBasis` records `adjudication`, `uncertainty`, and `reproducibility` (each fully exercised by the four fixtures, so typed enums), `target_fidelity` (kept a free string because a `real` value is not yet observed), and free-form `limitations`. A dimension that only one fixture exercises at a single value, notably human-attestation authority which is only ever `unverified`, stays in `limitations` rather than becoming a premature typed axis. `uncertainty`, `reproducibility`, and `target_fidelity` are derived from `measurement_kind` and `execution_backend`, never stored redundantly on the Finding, to avoid the None-versus-zero drift that is this project's most common defect class.
+- **A pure-function consumer, not the deferred engine.** `derive_claims(report) -> list[Claim]` only reads the report and never overrides `Finding.status` or `ComparisonSpec.joint_verdict`; it is the minimal Claim deriver, not the Claim/Assurance Engine machine deferred at the post-D8 gate. It fails closed twice: a report with no Finding returns an empty list, never a silent positive claim, which keeps a structured `ScopeGap` honestly deferred; and a Finding whose `verdict_provenance` is absent yields `assessable=false` with no confidence basis.
+- **Identity and hashing.** `verdict_provenance` attaches to the Finding with a `None` default and stays out of `finding_id`, preserving the ADR 0004 hash contract. `claim_id` is content-addressed over the Finding id, the provenance, the confidence basis, and the claim scope, so a provenance change changes the claim id rather than silently altering a claim's stated confidence.
+- **Discipline.** No change to `ontology_schema.yaml` or the profile; new enums are pydantic advisory only; all six Finding construction sites were backfilled; attestation references the already-stored `att:` evidence hash rather than copying a third record.
+
+Merged as PR #8; tests grew from 128 to 150. Full detail is in ADR 0016.
+
+## Next Discussion — User-Trial Milestone (2026-07-14)
+
+- The previously exposed OpenRouter API key has been disabled. Treat the immediate credential-containment action as complete; any replacement key should use a separate, tightly capped project and must not be placed in chat, logs, or shell history.
+- At the next project discussion, stop extending the roadmap from internal architecture alone. Work backward from the nearest milestone at which Ithuriel can be handed to real users for a bounded trial.
+- The milestone discussion should define at least: intended trial user and job-to-be-done; the smallest usable workflow and output; installation/onboarding; safe target and RoE boundaries; fixture/mock versus real execution claims; data-egress and credential handling; report/Claim presentation; failure and support expectations; acceptance criteria; and explicit non-goals.
+- Preserve the existing discipline while planning the trial: do not manufacture platform modules merely for completeness, do not collapse multidimensional warrant into a misleading single confidence score, and keep `assurance_level: none` until the evidence and fidelity genuinely justify a stronger claim.
+- No further design or coding was authorized in this session; resume from the user-trial milestone discussion.

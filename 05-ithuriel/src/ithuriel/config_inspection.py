@@ -22,6 +22,7 @@ from ithuriel.capability import (
 )
 from ithuriel.models import (
     AssuranceReport,
+    AutomaticRuleProvenance,
     EvidenceManifest,
     Finding,
     ScopeStatement,
@@ -133,6 +134,10 @@ def build_report(raw_text: str, *, host_id: str, sole_authority: bool = False,
         run_record=None,          # ⭐ FRICTION 观察点：确定性检查无 AI run → Finding 是否自然容纳？
         root_causes=None,         # FRICTION: root_cause_enum 是 AI 机理 P1–P6，对防火墙不适用 → fail 也 None
         evidence_completeness="per_trial",  # FRICTION: 词汇 AI-shaped（"trial"）；单确定性快照勉强套
+        # Step 4（ADR-0016）：确定性规则作用于确定性观察 → automatic_rule + deterministic_observation
+        # （与 probe 同变体；config↔probe 差异=target_fidelity，由 Claim 层从 execution_backend 派）。
+        verdict_provenance=AutomaticRuleProvenance(
+            rule_version=RULE_VERSION, measurement_kind="deterministic_observation"),
     )
 
     scope = ScopeStatement(

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -102,6 +102,46 @@ class AiRunRecord(BaseModel):
     utility_rate: Optional[float] = None  # under-attack utility（档 1：tradeoff 分类要读绝对 util，非 delta）
 
 
+# ── verdict_provenance（typed，据 4 fixture 反推，2026-07-13，ADR-0016）──────────
+# **收窄 warrant**（用户 2026-07-13 拍板，异议搭档六维全建）：typed union 只捕**两根被 2+ fixture
+# 真逼出的轴**——adjudication（=kind）⊥ measurement_kind。过尺纪律=「2+ fixture 给 2+ 值才升 typed
+# 轴」。reproducibility/target_fidelity 与 measurement_kind **共变** → Claim 层从既有 execution_backend
+# **派生、不新存**（单一真相源，防 None-vs-0.0 族冗余漂移）；authority（只 slice4 单值）+ 未观测枚举值
+# （target_fidelity=real / authority=independent）入 Claim.confidence_basis 的 limitations 自由列表，
+# 等第二权威体制出现再升 typed 轴。**为何现在=Step 1 spike 撞出 free-dict key-sniff 的顺序依赖脆弱
+# （probe/config 共用 rule_version、错序静默误判）+ verdict_mode 把 AI/config/probe 压成 automatic 分不开。**
+# 挂 Finding、**带默认 None**（历史 Finding 优雅退化、consumer fail-closed）、**不进 finding_id 哈希**
+# （守 ADR-0004 十一契约：finding_id 只哈希 control_id/target_ref/status/evidence_refs）。
+MeasurementKind = Literal["statistical_trials", "deterministic_observation"]
+
+
+class AutomaticRuleProvenance(BaseModel):
+    """AI 探针 / config / active probe 共有的裁定机制：确定性规则作用于测量结果。
+
+    三片**裁定机制同一**（Step 1 grounding 坐实：AI 的 status 规则、config 的 deny/allow、probe 的
+    observed⊆justified 都是确定性 rule）；真区分轴 = measurement_kind——AI=statistical_trials
+    （受 n_runs/CI 限），config/probe=deterministic_observation（bit 可复现）。config↔probe 的差异
+    在 target_fidelity（frozen-fixture vs mock），由 Claim 层从 execution_backend 派生、不在此存。
+    """
+    kind: Literal["automatic_rule"] = "automatic_rule"
+    rule_version: str                    # config: ufw-default-deny/v1 · probe: fw01-…/v1 · AI: status-rule 版本
+    measurement_kind: MeasurementKind
+
+
+class HumanAttestationProvenance(BaseModel):
+    """人工裁定：裁定源是 reviewer 的 decision（非规则），唯一另一种裁定**权威**（Step 1 #E 坐实）。"""
+    kind: Literal["human_attestation"] = "human_attestation"
+    decision_evidence_ref: str           # 指向**已存** attestation artifact 的内容哈希（att:…；不复制第三份）
+    mapping_version: str                  # decision→status 约定版本（ATTESTATION_MAPPING_VERSION）
+
+
+# discriminated union（pydantic v2 按 `kind` 路由）；Claim 层据此赋不同 confidence_basis。
+VerdictProvenance = Annotated[
+    Union[AutomaticRuleProvenance, HumanAttestationProvenance],
+    Field(discriminator="kind"),
+]
+
+
 class Finding(BaseModel):
     """schema `finding_schema`：control 对 target 判定的裁定结果。
 
@@ -119,6 +159,9 @@ class Finding(BaseModel):
     run_record: Optional[AiRunRecord] = None
     root_causes: Optional[list[RootCause]] = None  # advisory，只标 fail（真实失败机理）
     evidence_completeness: EvidenceCompleteness = "per_trial"  # summary_only=raw 已丢、仅汇总
+    # typed 裁定溯源（ADR-0016，advisory）：细化 verdict_mode=automatic 的三义（AI 统计/config 确定/
+    # probe 探测）+ 显式人工裁定。默认 None → 历史 Finding fail-closed、不进 finding_id 哈希。
+    verdict_provenance: Optional[VerdictProvenance] = None
     finding_id: str = ""                 # 内容寻址派生，见 model_validator
 
     @model_validator(mode="after")
@@ -298,3 +341,57 @@ class SessionReport(BaseModel):
     generated_from: list[str]            # 溯源：全部输入文件（csv + 存活 json）
     runs: list[AssuranceReport]          # 每条测量条件一个（含 invalid/not_applicable 跑）
     cross_condition_notes: list[str] = Field(default_factory=list)  # 横向观察（如攻击变体摆动）
+
+
+# ── Claim 层：confidence_basis（收窄 warrant）+ Finding-backed Claim（Step 3，ADR-0016）──────
+# reframe（搭档 + 用户拍板）：Claim 答「**凭什么成立** + **只对什么范围成立**」，非「属哪种 automatic」。
+# **多维依据保留、不产单一 confidence 档**（单档留 consumer 未来 weakest-link 派生）。维度过尺=「2+
+# fixture 给 2+ 值才升 typed 轴」：adjudication/uncertainty/reproducibility 三轴全值被 4 fixture 逼出
+# → Literal；target_fidelity 的 `real` 未观测 → **str**（不冻未观测值，守收窄纪律）；authority（只 slice4
+# 单值 unverified）**不设轴、入 limitations**。uncertainty/reproducibility 与 measurement_kind 共变 →
+# 在此**派生、不在 Finding 上新存**（单一真相源，防 None-vs-0.0 族冗余漂移）。
+Uncertainty = Literal["statistical_ci", "deterministic", "unquantified"]
+Reproducibility = Literal["bit", "protocol", "declarative"]
+
+
+class ConfidenceBasis(BaseModel):
+    """结论的多维 warrant（『凭什么』），非单一档。全部由 verdict_provenance + mctx 派生。"""
+    adjudication: Literal["automatic_rule", "human_attestation"]   # = provenance.kind
+    uncertainty: Uncertainty          # statistical→CI 限 · deterministic → bit 可复现 · 人工 → 未量化
+    reproducibility: Reproducibility  # statistical_trials→protocol · deterministic→bit · 人工→declarative
+    target_fidelity: str              # 派生自 execution_backend（mock/frozen_fixture）；`real` 未观测→str
+    limitations: list[str] = Field(default_factory=list)  # authority=unverified、保真度、assurance none 等
+
+
+class Claim(BaseModel):
+    """Finding-backed 保证结论：承载『凭什么成立(confidence_basis) + 只对什么范围(claim_scope)』。
+
+    首版**只吐 Finding-backed claim**（不产 Comparison/控制总体/合规 claim）。
+    **fail-closed**：verdict_provenance 缺失 → assessable=False、confidence_basis=None（不默认乐观档）。
+    confidence **不 override** 任何现有裁定（Finding.status / ComparisonSpec.joint_verdict）——纯叠加。
+    """
+    control_id: str
+    finding_id: str
+    finding_status: FindingStatus         # 被主张的裁定（confidence 描述『怎么得来』，与『是什么』正交）
+    verdict_provenance: Optional[VerdictProvenance] = None
+    confidence_basis: Optional[ConfidenceBasis] = None
+    claim_scope: dict[str, Any]
+    assessable: bool                      # provenance 在 → True；缺 → False（fail-closed）
+    unassessable_reason: Optional[str] = None
+    claim_id: str = ""                    # 内容寻址：finding_id + provenance + basis + scope（见 validator）
+
+    @model_validator(mode="after")
+    def _id(self) -> "Claim":
+        if not self.assessable and self.confidence_basis is not None:
+            raise ValueError("assessable=False 时 confidence_basis 必须为 None（fail-closed 不赋依据）")
+        if not self.assessable and not self.unassessable_reason:
+            raise ValueError("assessable=False 必须带 unassessable_reason")
+        if not self.claim_id:
+            # provenance 变 → claim_id 变（不让同 id 承载不同置信度，搭档哈希要求）。
+            self.claim_id = content_hash({
+                "finding_id": self.finding_id,
+                "verdict_provenance": self.verdict_provenance.model_dump() if self.verdict_provenance else None,
+                "confidence_basis": self.confidence_basis.model_dump() if self.confidence_basis else None,
+                "claim_scope": self.claim_scope,
+            }, prefix="claim:")
+        return self

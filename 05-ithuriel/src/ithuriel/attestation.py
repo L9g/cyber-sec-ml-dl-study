@@ -26,6 +26,7 @@ from ithuriel.models import (
     AssuranceReport,
     EvidenceManifest,
     Finding,
+    HumanAttestationProvenance,
     ScopeStatement,
     content_hash,
 )
@@ -88,11 +89,17 @@ def build_report(*, register: list[ExceptionEntry],
     reg_hash = content_hash(reg_payload, prefix="reg:")
     artifacts: dict[str, dict[str, Any]] = {reg_hash: reg_payload}
     evidence_refs = [reg_hash]
+    # Step 4（ADR-0016）：裁定源=reviewer 的 decision → human_attestation provenance。
+    # decision_evidence_ref **引用已存 att: 哈希、不复制第三份**（att_payload 已进 artifacts）。
+    # 无 attestation → 无裁定事件 → provenance=None（Claim 层 fail-closed，诚实：无人工决定可承载）。
+    verdict_prov = None
     if attestation is not None:
         att_payload = {"kind": "review-attestation/v1", **attestation.model_dump()}
         att_hash = content_hash(att_payload, prefix="att:")
         artifacts[att_hash] = att_payload
         evidence_refs.append(att_hash)
+        verdict_prov = HumanAttestationProvenance(
+            decision_evidence_ref=att_hash, mapping_version=ATTESTATION_MAPPING_VERSION)
 
     if attestation is None:
         status, rationale = "inconclusive", (
@@ -126,9 +133,10 @@ def build_report(*, register: list[ExceptionEntry],
         assessed_at=assessed_at, evidence_refs=evidence_refs,
         severity=ctrl.severity_if_failed if status == "fail" else None,   # Low
         rationale=rationale,
-        run_record=None,          # ⭐ FRICTION：无 AI run；但也无确定性 rule —— reviewer/date/attestation_ref
-                                  # 没有 typed 家（无 ai_run_record 对应物）→ 落 mctx（见 ADR-0015 verdict_source）
+        run_record=None,          # ⭐ 无 AI run；ADR-0015 曾把 reviewer 溯源落 mctx（无 typed 家）——
+                                  # Step 4（ADR-0016）已补 typed 家=verdict_provenance（下），mctx.review_record 仍留作证据。
         root_causes=None, evidence_completeness="per_trial",
+        verdict_provenance=verdict_prov,   # 有 attestation→human_attestation；无→None（fail-closed）
     )
     scope = ScopeStatement(
         claim="CE-UK-SU-03 变更/例外登记 human_review（声明式证据、非工具探测）；非合规通过。",

@@ -22,7 +22,7 @@ Base 层遵循 Unix 式的极简与可组合，差异化层刻意重投入。插
 
 ## 文档
 
-- 设计原理与编码介绍：`docs/DESIGN.md`
+- 设计原理与编码介绍：`docs/DESIGN.md`（英文版 `docs/DESIGN.en.md`）
 - 编码接缝契约：`docs/architecture-seams-D8.md`
 - 架构决策记录：`docs/adr/`（0001 到 0015 的完整决策弧）
 - 设计草案：`docs/Cyber+AI_安全+合规Agent项目规划草案.md`

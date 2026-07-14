@@ -91,9 +91,10 @@ def test_markdown_never_reads_as_system_safe(demo):
 # ── friction 1：fidelity join 单位=控制、与 coverage 分母一致 ───────────────────
 def test_friction1_fidelity_counts_align_with_coverage_denominator(demo):
     for row in demo.matrix:
-        counted = sum(row.fidelity_mix.values()) + row.unassessable
+        # not_assessed（ADR-0019）进 applicable 但无 report → 不在 fidelity_mix/unassessable，单列补齐。
+        counted = sum(row.fidelity_mix.values()) + row.unassessable + len(row.not_assessed_controls)
         assert counted == row.applicable, (
-            f"{row.domain}: fidelity+unassessable={counted} 应等于 applicable={row.applicable}"
+            f"{row.domain}: fidelity+unassessable+not_assessed={counted} 应等于 applicable={row.applicable}"
             "（friction 1：join 单位必须=控制，与 coverage 分母一致）")
 
 
@@ -126,7 +127,10 @@ def test_g5_render_is_bit_reproducible(demo):
 
 def test_g5_json_valid_and_audit_standards_present(demo):
     j = json.loads(to_json(demo))                    # 合法 JSON
-    assert set(j.keys()) == {"generated_from", "matrix", "controls"}
+    assert set(j.keys()) == {"generated_from", "matrix", "controls",
+                             "manifest_hash", "declared_controls",
+                             "not_assessed_controls", "undeclared_assessed"}
+    assert j["manifest_hash"] is None                # demo 无 manifest → 如实 None（覆盖率仅已评估）
     all_standards = [s for c in j["controls"] for s in c["standards"]]
     assert any("OWASP" in s for s in all_standards)  # AI 控制审计闭环
     assert any("Cyber Essentials" in s for s in all_standards)  # config 控制审计闭环
@@ -135,3 +139,163 @@ def test_g5_json_valid_and_audit_standards_present(demo):
 def test_empty_input_yields_empty_report_no_positive_claim():
     rep = render_report([])                          # 0 report → 空报告，不静默产结论
     assert rep.matrix == [] and rep.controls == []
+
+
+# ── ②（搭档 P0，ADR-0017 §59）：not_ready=False ≠ ready；「无门禁」绝不读成「就绪」，不造 readiness 档 ──
+def test_gate_status_incomplete_when_medium_fail_present(demo):
+    # config 两主机 = deny pass + allow fail(Medium)；无 High/Critical → not_ready=False，
+    # 但 1/2 未 pass → 门禁/缺口判读必须显式 incomplete、不得读成 ready/清白。
+    net = next(r for r in demo.matrix if r.domain == "network_security")
+    assert net.not_ready is False                    # ledger 原值：无 High/Critical 门禁
+    assert net.gate_status == "incomplete"           # 但如实陈述：非就绪
+    assert net.coverage < 1.0
+
+
+def test_no_manufactured_readiness_verdict_field():
+    # 不造 readiness 档：MatrixRow 不得出现名为 readiness/ready 的正向就绪判读字段。
+    for name in MatrixRow.model_fields:
+        assert "readiness" not in name and name != "ready", f"MatrixRow.{name} 疑似 readiness 档（②：不造）"
+
+
+def test_gate_status_all_pass_still_not_system_ready(demo):
+    ai = next(r for r in demo.matrix if r.domain == "ai_agent_security")
+    assert ai.gate_status == "all_applicable_passed"  # 全适用 pass 是事实陈述、非就绪判读
+    # 关键：全 pass 也不越权断言系统 ready——detail 显式否定「系统 ready」。
+    assert "ready" in (ai.gate_detail or "") and "非系统级" in (ai.gate_detail or "")
+
+
+def test_markdown_never_renders_absence_of_gate_as_clear(demo):
+    md = to_markdown(demo)
+    assert "incomplete" in md
+    assert "并非 ready" in md
+    assert "无 High/Critical 门禁 ≠ ready" in md      # 图例护栏句在场
+
+
+# ── ③（搭档 P0，ADR-0017 §60）：target 身份 + rationale + 结构化 advisory 不丢 ──────────
+def test_two_hosts_are_distinguishable(demo):
+    fw = [c for c in demo.controls if c.control_id == "CE-UK-FW-03"]
+    assert len(fw) == 2
+    labels = {c.target_label for c in fw}
+    assert labels == {"host-01", "host-02"}          # 两台主机不再折成同名段落
+    md = to_markdown(demo)
+    assert "@ host-01" in md and "@ host-02" in md
+
+
+def test_fail_rationale_and_advisory_surface(demo):
+    md = to_markdown(demo)
+    assert "裁定理由" in md                            # fail 不再只显示 [fail] 而不说为何
+    assert "违反 default-deny" in md                  # config fail 的真实理由穿透到 view
+    assert "advisory（root_causes）" in md             # AI 的结构化 P1–P6 advisory 穿透
+    # warrant 层确有 rationale 承载（非仅 markdown 拼接）
+    fail_arm = next(w for c in demo.controls for w in c.warrants if w.finding_status == "fail")
+    assert fail_arm.rationale
+
+
+def test_attestation_0015_conflict_note_survives_to_view():
+    # ADR-0015 冲突警示（reviewer conformant 但登记缺 justification）曾在最终 view 丢失——须穿透。
+    from ithuriel.attestation import ExceptionEntry, ReviewAttestation
+    from ithuriel.attestation import build_report as att_report
+    reg = [ExceptionEntry(exception_id="EXC-001", justification_ref="CHG-2201", review_date="2026-06-01"),
+           ExceptionEntry(exception_id="EXC-003", justification_ref="", review_date="2026-06-20")]
+    att = ReviewAttestation(reviewer="j.smith", review_date="2026-06-30", decision="conformant",
+                            statement="tracked", attested_refs=["EXC-001"])
+    view = render_report([att_report(register=reg, attestation=att, host_id="host-att-01")])
+    md = to_markdown(view)
+    assert "ADR-0015" in md and "EXC-003" in md and "缺 justification_ref" in md
+
+
+# ── ④（搭档 P0，ADR-0017 §61）：joint_verdict 未评估 ≠ 无问题；显式区分 ─────────────────
+def test_deterministic_domain_marks_joint_not_evaluated(demo):
+    net = next(r for r in demo.matrix if r.domain == "network_security")
+    assert net.joint_evaluated is False              # 无 bare/defended 对比
+    assert net.joint_caveats == {}
+    ai = next(r for r in demo.matrix if r.domain == "ai_agent_security")
+    assert ai.joint_evaluated is True                # 有防御实验
+
+
+def test_markdown_distinguishes_not_evaluated_from_no_disagreement(demo):
+    md = to_markdown(demo)
+    assert "未评估（无防御实验）" in md                 # 确定性域不再留裸「—」被读成无问题
+    # 控制详情也如实标未评估（无 comparison 的确定性检查）
+    net_ctrl = next(c for c in demo.controls if c.control_id == "CE-UK-FW-03")
+    assert net_ctrl.joint_evaluated is False
+
+
+# ── AssessmentManifest（ADR-0019，搭档 P0 #1）：分母对声明控制集算、防输入选择做高 ──────────
+from ithuriel.manifest import AssessmentManifest, DeclaredControl  # noqa: E402
+
+
+def _net_manifest() -> AssessmentManifest:
+    # 声明 network_security 全部四控制 + AI 控制；只跑其中一部分 → 未跑的须显式 not_assessed。
+    return AssessmentManifest(profile_id="uk", declared=[
+        DeclaredControl(control_id="AI-AGENT-PI-01"),
+        DeclaredControl(control_id="CE-UK-FW-01"),
+        DeclaredControl(control_id="CE-UK-FW-02"),
+        DeclaredControl(control_id="CE-UK-FW-03"),
+        DeclaredControl(control_id="CE-UK-FW-04"),
+    ])
+
+
+def test_coverage_cannot_be_inflated_by_dropping_reports():
+    # 核心不变量：同一声明清单下，删掉那份 fail 的 report 不能把覆盖率抬到 1.0。
+    reports = [_ai(), _fw03("deny_active.txt", "host-01"), _fw03("allow_active.txt", "host-02")]
+    mfst = _net_manifest()
+    with_fail = render_report(reports, manifest=mfst)
+    dropped_fail = render_report(reports[:2], manifest=mfst)   # 去掉 host-02（allow=fail）
+    net_a = next(r for r in with_fail.matrix if r.domain == "network_security")
+    net_b = next(r for r in dropped_fail.matrix if r.domain == "network_security")
+    assert net_a.coverage < 1.0 and net_b.coverage < 1.0       # 两种输入都读不成满覆盖
+    # 对照：无 manifest 时删 report 确实虚高到 1.0——正是 manifest 要堵的洞。
+    no_mfst = next(r for r in render_report(reports[:2]).matrix if r.domain == "network_security")
+    assert no_mfst.coverage == 1.0
+
+
+def test_declared_but_unreported_controls_surface_as_not_assessed():
+    reports = [_ai(), _fw03("deny_active.txt", "host-01"), _fw03("allow_active.txt", "host-02")]
+    view = render_report(reports, manifest=_net_manifest())
+    net = next(r for r in view.matrix if r.domain == "network_security")
+    assert net.not_assessed_controls == ["CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-04"]
+    assert net.applicable == 5 and net.passed == 1 and net.coverage == 0.2   # FW-03 两主机 + 三未评估
+    assert view.not_assessed_controls == ["CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-04"]
+    md = to_markdown(view)
+    assert view.manifest_hash and view.manifest_hash in md
+    assert "声明但**未评估**" in md and "CE-UK-FW-04" in md
+
+
+def test_undeclared_assessment_is_flagged():
+    # 只声明 FW-03，却也跑了 AI 控制 → 越界评估如实点名（不静默计入声明分母）。
+    mfst = AssessmentManifest(profile_id="uk", declared=[DeclaredControl(control_id="CE-UK-FW-03")])
+    view = render_report([_ai(), _fw03("deny_active.txt", "host-01")], manifest=mfst)
+    assert view.undeclared_assessed == ["AI-AGENT-PI-01"]
+    assert "越界评估" in to_markdown(view)
+
+
+def test_no_manifest_warns_coverage_is_input_selectable(demo):
+    md = to_markdown(demo)
+    assert demo.manifest_hash is None
+    assert "未对照评估清单" in md and "可被输入选择做高" in md
+
+
+def test_dangling_declaration_fails_closed():
+    # 声明未注册的控制 → fail-closed 报错（echo registry 不悬空不变量），不静默吞。
+    mfst = AssessmentManifest(profile_id="uk", declared=[DeclaredControl(control_id="NOT-A-REAL-CONTROL")])
+    with pytest.raises(ValueError, match="未在 registry 注册"):
+        render_report([_fw03("deny_active.txt", "host-01")], manifest=mfst)
+
+
+def test_manifest_hash_pins_declaration():
+    a = AssessmentManifest(profile_id="uk", declared=[
+        DeclaredControl(control_id="CE-UK-FW-01"), DeclaredControl(control_id="CE-UK-FW-03")])
+    reordered = AssessmentManifest(profile_id="uk", declared=[
+        DeclaredControl(control_id="CE-UK-FW-03"), DeclaredControl(control_id="CE-UK-FW-01")])
+    fewer = AssessmentManifest(profile_id="uk", declared=[DeclaredControl(control_id="CE-UK-FW-01")])
+    assert a.manifest_hash == reordered.manifest_hash    # 声明集相同 → 同 hash（顺序无关）
+    assert a.manifest_hash != fewer.manifest_hash        # 改分母 → 改 hash（事后调分母会暴露）
+
+
+def test_empty_or_duplicate_declaration_rejected():
+    with pytest.raises(ValueError, match="不得为空"):
+        AssessmentManifest(profile_id="uk", declared=[])
+    with pytest.raises(ValueError, match="重复"):
+        AssessmentManifest(profile_id="uk", declared=[
+            DeclaredControl(control_id="CE-UK-FW-01"), DeclaredControl(control_id="CE-UK-FW-01")])

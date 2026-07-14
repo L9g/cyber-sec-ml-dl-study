@@ -251,5 +251,5 @@ D8_PROVIDER=custom D8_BASE_URL=<url> D8_API_KEY=<key> D8_MODEL=<model> ...
 
 - `README.md`，项目定位与两条产品线。
 - `docs/architecture-seams-D8.md`，编码接缝契约，也就是"哪些接口现在定、哪些等摩擦"的权威划分。
-- `docs/adr/`，从 0001 到 0016 的完整决策弧。
+- `docs/adr/`，从 0001 到 0017 的完整决策弧。
 - `docs/ontology_schema.yaml` 与 `docs/UK_Region_Profile_v0.2.yaml`，被差异化层只读消费的 schema 与机器可读 profile。

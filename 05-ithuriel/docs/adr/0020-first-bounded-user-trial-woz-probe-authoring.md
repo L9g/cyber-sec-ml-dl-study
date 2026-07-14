@@ -23,7 +23,7 @@
 
 - **试用用户与 job-to-be-done**：搭档扮一名安全审核操作员；job = 把一条近期 AI 注入攻击情报变成一个有威胁假设、成功判据、安全边界、适用范围的声明式测试资产，并读懂由它产出的有界结论。
 - **攻击面预先框窄（当前开发阶段=跑通即可）**：本轮攻击面**固定**为 AgentDojo workspace mock 的 tool-output / calendar / email 一类间接注入（`0018` §216 首切片范围 + §283 Q2 建议面），操作员在这个面**内**框定一个具体攻击（可取材真实情报，但不追求覆盖新攻击面）。理由=当前阶段目标是让端到端流程**跑通**、拿到一份真实产出的报告；「让操作员自由选、撞到 mock 表达不了」那种覆盖压力测试是后续阶段的事，现在放进来只会把首轮卡在跑不出报告（用户拍板：这一步薄一点、先跑通）。
-- **最薄工作流与产出**：(1) 操作员登记一条情报（来源/可信度/自述假设）；(2) 把它填成声明式 `ProbeCandidate`——entry surface、攻击技术、恶意目标、security oracle、utility oracle、威胁模型、环境保真度；(3) 作者 WoZ 把它映射到上述固定面的一个 AgentDojo mock 场景，跑正对照（已知易受影响 target 上应命中）+ 负对照（无攻击/安全变体不误报）；(4) 产出复用 `0017`/`0019` 的有界报告：security 轴覆盖 + 联合裁定警示 + 门禁/缺口 + 目标保真度 + `assurance_level: none`，并对照一份只声明这一条控制的 `AssessmentManifest`。产出物是一份 mock 报告，不是对任何真实目标的保证。
+- **最薄工作流与产出**：(1) 操作员登记一条情报（来源/可信度/自述假设）；(2) 把它填成声明式 `ProbeCandidate`——entry surface、攻击技术、恶意目标、security oracle、utility oracle、威胁模型、环境保真度（空白模板见 `docs/trial/probe-candidate-template.md`，作者不代填任何字段，守 C1）；(3) 作者 WoZ 把它映射到上述固定面的一个 AgentDojo mock 场景，跑正对照（已知易受影响 target 上应命中）+ 负对照（无攻击/安全变体不误报）；(4) 产出复用 `0017`/`0019` 的有界报告：security 轴覆盖 + 联合裁定警示 + 门禁/缺口 + 目标保真度 + `assurance_level: none`，并对照一份只声明这一条控制的 `AssessmentManifest`。产出物是一份 mock 报告，不是对任何真实目标的保证。
 - **安装/上手**：本轮零安装。纸上 + 作者 WoZ 执行；操作员只需读结构、填字段、读报告。
 - **目标与 RoE 边界**：仅 `0018` 的 T0–T2（纯文本 lint / 无工具无客户数据的模型调用 / AgentDojo mock 可恢复状态）；无客户系统、无真实网络或副作用；攻击面限 AgentDojo mock 可表达者（tool-output / calendar / email 一类间接注入）。
 - **fixture/mock vs 真实**：全程明标 **WoZ-compiled + mock-report**；不声称对真实目标的评估，不冒充 compiler 已存在。

@@ -49,3 +49,14 @@ demo = AI PI-01 冻结 fixture + config-FW03 两主机，跨两裁定形状。**
 ## 待办
 
 Step 2/3/4 已全落（渲染器 / demo / 测试+本 ADR）。**下一档**（带外部风险 pilot，非本里程碑）才需要：seeded tenant + reset oracle、`content_hash` 客户级证据完整性升级、ApprovalGrant、外部 claim contract。**英文版 DESIGN.en.md 的「附」节镜像**待补（本轮只更中文版）。
+
+## 更新（2026-07-14，附注不改上文决策过程）
+
+- 上「待办」里的 **DESIGN.en.md「附」节镜像已完成**（commit `51e6024`，Economist 风格、英式拼写）。此条关闭。
+- `src/ithuriel/report.py` 顶部 docstring 曾标 `ADR-0017 pending`，本 ADR 已 accepted 并合入 main（PR #11），docstring 同步为 accepted。
+- **搭档 milestone 审阅回来了**（审 0013–0017 + 复跑 160 passed），认定 0013–0017 是**已实现的决策记录、非未来计划**，真正下一步应从内部架构验证转向「有界用户试用」。审出四个 P0 落在本 ADR 与 `0014`：
+  ①覆盖率分母来自「传入的 report 集合」而非「声明的控制全集」，可被输入选择做高（需 `AssessmentManifest` 供分母）；
+  ②`not_ready=False ≠ ready`（Medium fail / 50% gap / 全 inconclusive 都 not_ready=False，字段名诱导误读）；
+  ③本报告 `ControlView` **丢了 target 身份 + Finding.rationale/结构化 advisory**——两台 FW-03 主机渲染成同名段落无法区分，且 `0015`「surface 不 override」的冲突警示（attestation.py 记的 conformant-但缺-justification）到最终 view 丢失；
+  ④`joint_verdict` **未评估**（无 comparison 的确定性检查）在矩阵显示空白 `—`，易被读成「无问题」，应显式区分 not_evaluated/not_applicable。
+  这四项连同结构化 `ScopeGap`（第五次字符串承载、被 `AssessmentManifest` 消费者逼出）+ provenance 再正交（`measurement_provenance ⊥ adjudication_provenance`，记为 forcing trigger、暂不重构）留下一里程碑处置，详见搭档审阅与后续 ADR。

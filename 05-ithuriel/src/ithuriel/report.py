@@ -1,4 +1,4 @@
-"""内部试用报告 view（试用里程碑 Step 1，ADR-0017 pending）= 让现有 Claim/Ledger 第一次被真实消费。
+"""内部试用报告 view（试用里程碑 Step 1–2，ADR-0017 accepted）= 让现有 Claim/Ledger 第一次被真实消费。
 
 `render_report(reports) -> Report`：把一批 `AssuranceReport`（AI 会话拆开 + 确定性切片）投影成一份
 **有边界的内部报告**，回答操作者/评估者三问——**能说什么 / 凭什么 / 不能说什么**。

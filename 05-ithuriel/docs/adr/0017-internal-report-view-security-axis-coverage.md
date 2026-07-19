@@ -49,3 +49,24 @@ demo = AI PI-01 冻结 fixture + config-FW03 两主机，跨两裁定形状。**
 ## 待办
 
 Step 2/3/4 已全落（渲染器 / demo / 测试+本 ADR）。**下一档**（带外部风险 pilot，非本里程碑）才需要：seeded tenant + reset oracle、`content_hash` 客户级证据完整性升级、ApprovalGrant、外部 claim contract。**英文版 DESIGN.en.md 的「附」节镜像**待补（本轮只更中文版）。
+
+## 更新（2026-07-14，附注不改上文决策过程）
+
+- 上「待办」里的 **DESIGN.en.md「附」节镜像已完成**（commit `51e6024`，Economist 风格、英式拼写）。此条关闭。
+- `src/ithuriel/report.py` 顶部 docstring 曾标 `ADR-0017 pending`，本 ADR 已 accepted 并合入 main（PR #11），docstring 同步为 accepted。
+- **搭档 milestone 审阅回来了**（审 0013–0017 + 复跑 160 passed），认定 0013–0017 是**已实现的决策记录、非未来计划**，真正下一步应从内部架构验证转向「有界用户试用」。审出四个 P0 落在本 ADR 与 `0014`：
+  ①覆盖率分母来自「传入的 report 集合」而非「声明的控制全集」，可被输入选择做高（需 `AssessmentManifest` 供分母）；
+  ②`not_ready=False ≠ ready`（Medium fail / 50% gap / 全 inconclusive 都 not_ready=False，字段名诱导误读）；
+  ③本报告 `ControlView` **丢了 target 身份 + Finding.rationale/结构化 advisory**——两台 FW-03 主机渲染成同名段落无法区分，且 `0015`「surface 不 override」的冲突警示（attestation.py 记的 conformant-但缺-justification）到最终 view 丢失；
+  ④`joint_verdict` **未评估**（无 comparison 的确定性检查）在矩阵显示空白 `—`，易被读成「无问题」，应显式区分 not_evaluated/not_applicable。
+  这四项连同结构化 `ScopeGap`（第五次字符串承载、被 `AssessmentManifest` 消费者逼出）+ provenance 再正交（`measurement_provenance ⊥ adjudication_provenance`，记为 forcing trigger、暂不重构）留下一里程碑处置，详见搭档审阅与后续 ADR。
+
+## 更新（2026-07-14，呈现诚实三件落地：②③④ 关闭，① 延后）
+
+搭档四个 P0 里 **②③④ 是纯呈现层的诚实修复**（都在 `report.py` view 内，重排既有字段、零 schema 改动），先落；**① 需新对象 `AssessmentManifest`**（覆盖率分母来自声明控制全集而非传入 report 集合）属结构性改动，留下一里程碑。三件均在 `report.py` 落地并各带回归测试（`test_report.py` 160→**169**）：
+
+- **② `not_ready=False ≠ ready`**（**不造 readiness 档**）：`MatrixRow` 新增派生 `gate_status`（`blocked` / `incomplete` / `all_applicable_passed` / `no_applicable_controls`）+ `gate_detail`，保留 ledger 原值 `not_ready` 作审计。**刻意不叫也不产「readiness」判读**——造一个正向就绪档本身就是过度声称；`gate_status` 只陈述门禁/缺口事实。markdown「门禁 / 缺口」列取代旧「门禁」列：Medium fail / 部分覆盖 / 全 inconclusive 一律显式 `incomplete` 并标未 pass 数，**「无 High/Critical 门禁」不再渲染成裸「—」被读成清白**；即便全适用 pass 也只陈述事实并显式否定「系统 ready」，不越权替部署方下整体就绪判断。测试 `test_gate_status_*` / `test_no_manufactured_readiness_verdict_field` / `test_markdown_never_renders_absence_of_gate_as_clear`。
+- **③ target 身份 + rationale + 结构化 advisory 不丢**：`ControlView` 新增 `target_label`（host_id / model + defense 变体）+ `targets`（各臂原始 target_ref）——**两台 FW-03 主机不再折成同名段落**（`@ host-01` / `@ host-02`）；`WarrantView` 新增 `rationale`（fail 为何失败）+ `advisory`（root_causes P1–P6），**ADR-0015「reviewer conformant 但登记缺 justification」的冲突警示（藏在 rationale 里）随之穿透到最终 view**。测试 `test_two_hosts_are_distinguishable` / `test_fail_rationale_and_advisory_surface` / `test_attestation_0015_conflict_note_survives_to_view`。
+- **④ `joint_verdict` 未评估 ≠ 无问题**：`MatrixRow` / `ControlView` 新增 `joint_evaluated`（本轴/本控制是否做过 bare/defended 联合裁定）。matrix 联合裁定列显式区分 `未评估（无防御实验）` 与 `✔ 已评估无分歧`，控制详情标 `联合裁定 未评估（无 bare/defended 对比）`——**确定性域不再留裸「—」被读成无问题**。测试 `test_deterministic_domain_marks_joint_not_evaluated` / `test_markdown_distinguishes_not_evaluated_from_no_disagreement`。
+
+**守纪律**：仍是 presentation DTO——只在 view 内重排/派生既有字段，未动 `ontology_schema.yaml` / profile / 任何 producer（derive/config_inspection/attestation/ledger/claim/models 均未改）。新字段名无 `overall/total/score/grade/rating`（`test_g2_*` 硬断言仍过）。**① `AssessmentManifest`（分母对象）+ 结构化 `ScopeGap` + provenance 再正交仍留下一里程碑。**

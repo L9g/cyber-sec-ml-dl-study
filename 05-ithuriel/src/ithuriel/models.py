@@ -271,11 +271,17 @@ class Verification(BaseModel):
 
 
 class ControlDefinition(BaseModel):
-    """profile 控制实例（只取本层消费的字段；probe_suite/csf2/plugins 等 extra 忽略）。"""
+    """profile 控制实例（只取本层消费的字段；probe_suite/plugins 等 extra 忽略）。
+
+    `ce_area`（ADR-0021）= 控制在 Cyber Essentials 五 area 下的归属（profile 一等字段，读入供 ledger
+    的 CE-area 轴 rollup）。**只读 profile 已有字段、非扩 ontology schema**。`csf2`（NIST CSF 子类，
+    多归属列表）仍 `extra` 忽略——csf2_function 轴等真实 NIST CSF 消费者与多归属计数决策逼出再读。
+    """
     model_config = ConfigDict(extra="ignore")
     id: str
     title: str
     domain: Optional[str] = None
+    ce_area: Optional[str] = None                  # Cyber Essentials area（ADR-0021）；AI 控制无此归属
     severity_if_failed: Optional[Severity] = None  # Finding.severity 于 fail 时继承此值
     standards_refs: list[StandardRef]
     verification: Verification

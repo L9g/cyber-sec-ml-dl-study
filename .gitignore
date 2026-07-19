@@ -1,0 +1,4 @@
+# Claude Code 的临时 worktree。曾被误当子模块以 gitlink（mode 160000）提交进来，
+# 但仓库里没有 .gitmodules，clone 后拉不出内容，只会留一个空目录。
+# 注意 .claude/skills/ 是要入库的，故只忽略 worktrees。
+.claude/worktrees/

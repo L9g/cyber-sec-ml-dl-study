@@ -16,10 +16,14 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from ithuriel.manifest import AssessmentManifest
 from ithuriel.models import AssuranceReport
+from ithuriel.registry import control
 
-# rollup status：Finding 四态 + **gap**（rollup-only：0-Finding 覆盖缺口，进分母、非 pass）。
-RollupStatus = Literal["pass", "fail", "inconclusive", "not_applicable", "gap"]
+# rollup status：Finding 四态 + **gap**（rollup-only：0-Finding 覆盖缺口，进分母、非 pass）
+# + **not_assessed**（ADR-0019：manifest 声明了却整条无 report，进分母、非 pass；与 gap 区分——
+#   gap 是「report 在、0 Finding」，not_assessed 是「连 report 都没有」）。
+RollupStatus = Literal["pass", "fail", "inconclusive", "not_applicable", "gap", "not_assessed"]
 GATING_SEVERITIES = {"High", "Critical"}      # ontology scoring.gating
 
 
@@ -27,20 +31,24 @@ class ControlOutcome(BaseModel):
     """一个控制在一份 report 里归约出的 rollup 结果（多 Finding→defended、0 Finding→gap）。"""
     control_id: str
     domain: Optional[str] = None
+    ce_area: Optional[str] = None             # Cyber Essentials area（ADR-0021）；None=无映射（如 AI 控制）
     severity: Optional[str] = None            # control.severity_if_failed（gating 用）
     status: RollupStatus
     gap_kind: Optional[str] = None            # status==gap 时的子类（out_of_scope/unsupported/…）
 
 
 class AxisCoverage(BaseModel):
-    """某 rollup 轴（当前 domain）某 key 的 graded coverage + gating。"""
-    axis: str                                 # "domain"
-    key: str                                  # 如 "network_security"
-    applicable: int                           # 分母（排除 not_applicable）
+    """某 rollup 轴（domain / ce_area）某 key 的 graded coverage + gating。"""
+    axis: str                                 # "domain" | "ce_area"（ADR-0021）
+    key: str                                  # domain 如 "network_security"；ce_area 如 "firewalls"
+    applicable: int                           # 分母（排除 not_applicable；含 not_assessed）
     passed: int
     coverage: float                           # passed / applicable（scoring.coverage）
     not_ready: bool                           # 任一 High/Critical fail（scoring.gating）
     gating_reason: Optional[str] = None       # 触发 not_ready 的控制
+    # ADR-0019：本轴内被 manifest 声明、却整条无 report 的控制 id（进分母算未 pass，如实点名）。
+    # 无 manifest → 空（分母=仅已评估，覆盖率此时可被输入选择做高，呈现层须如实标此局限）。
+    not_assessed_controls: list[str] = Field(default_factory=list)
 
 
 class CoverageLedger(BaseModel):
@@ -48,6 +56,9 @@ class CoverageLedger(BaseModel):
     outcomes: list[ControlOutcome]
     axes: list[AxisCoverage]
     generated_from: list[str] = Field(default_factory=list)
+    # ADR-0021（R1）：某轴下无映射键的控制 id（当前只 ce_area：AI 控制无 ce_area）。**刻意不塞进带
+    # coverage 分数的轴 key**（否则读成「一个覆盖率为 X 的 area」），改由此单列、呈现层显式点名不静默丢。
+    unmapped: dict[str, list[str]] = Field(default_factory=dict)
 
 
 def _defended_finding(report: AssuranceReport):
@@ -66,16 +77,17 @@ def control_outcome(report: AssuranceReport) -> ControlOutcome:
     ctrl = report.control
     control_id = ctrl.id if ctrl else report.measurement_context.get("control_id", "UNKNOWN")
     domain = ctrl.domain if ctrl else None
+    ce_area = ctrl.ce_area if ctrl else None
     severity = ctrl.severity_if_failed if ctrl else None
 
     if not report.findings:
         # 0 Finding = 覆盖缺口（进分母、非 pass）。gap 子类来自 scope/mctx。
         gap_kind = (report.measurement_context.get("gap_kind")
                     or (report.scope.invalidity_reasons[0] if report.scope.invalidity_reasons else "gap"))
-        return ControlOutcome(control_id=control_id, domain=domain, severity=severity,
+        return ControlOutcome(control_id=control_id, domain=domain, ce_area=ce_area, severity=severity,
                               status="gap", gap_kind=gap_kind)
     finding = report.findings[0] if len(report.findings) == 1 else _defended_finding(report)
-    return ControlOutcome(control_id=control_id, domain=domain, severity=severity,
+    return ControlOutcome(control_id=control_id, domain=domain, ce_area=ce_area, severity=severity,
                           status=finding.status)
 
 
@@ -91,20 +103,58 @@ def _rollup_axis(axis: str, keyed: dict[str, list[ControlOutcome]]) -> list[Axis
             axis=axis, key=key, applicable=n, passed=passed,
             coverage=round(passed / n, 3) if n else 0.0,
             not_ready=gate is not None,
-            gating_reason=(f"{gate.control_id} fail (severity {gate.severity})" if gate else None)))
+            gating_reason=(f"{gate.control_id} fail (severity {gate.severity})" if gate else None),
+            not_assessed_controls=sorted(o.control_id for o in outs if o.status == "not_assessed")))
     return axes
 
 
-def build_ledger(reports: list[AssuranceReport],
-                 generated_from: Optional[list[str]] = None) -> CoverageLedger:
-    """N 份 AssuranceReport → CoverageLedger（当前按 domain 轴 rollup）。
+def _not_assessed_outcomes(manifest: AssessmentManifest,
+                           reported_ids: set[str]) -> list[ControlOutcome]:
+    """声明了却整条无 report 的控制 → not_assessed outcome（domain/severity 从 registry 解析）。
 
-    ce_area / csf2_function 两轴（schema 列出）需从 standards_refs 解析（cyber_essentials→ce_area、
-    nist_csf→csf2_function）→ derivable-deferred（本切片只做 domain 轴，够验 rollup+gating）。
+    声明控制必须在 registry 注册（非悬空声明）；未注册 → fail-closed 报错，不静默吞。
+    """
+    outs: list[ControlOutcome] = []
+    for cid in sorted(manifest.control_ids() - reported_ids):
+        try:
+            ctrl = control(cid)
+        except KeyError as exc:
+            raise ValueError(
+                f"manifest 声明控制 '{cid}' 未在 registry 注册（悬空声明，违反 registry 不变量）") from exc
+        outs.append(ControlOutcome(control_id=cid, domain=ctrl.domain, ce_area=ctrl.ce_area,
+                                   severity=ctrl.severity_if_failed,
+                                   status="not_assessed", gap_kind="declared_not_assessed"))
+    return outs
+
+
+def build_ledger(reports: list[AssuranceReport],
+                 manifest: Optional[AssessmentManifest] = None,
+                 generated_from: Optional[list[str]] = None) -> CoverageLedger:
+    """N 份 AssuranceReport → CoverageLedger（按 domain 轴 + Cyber Essentials area 轴 rollup）。
+
+    `manifest` 在时（ADR-0019）：分母由声明控制集播种——声明了却无 report 的控制补成 not_assessed
+    outcome（进分母、非 pass），覆盖率不再能靠少传 report 做高。无 manifest 则沿旧行为（分母=仅已评估，
+    呈现层须如实标「可被输入选择做高」局限）。
+
+    **ce_area 轴（ADR-0021）**：`ce_area` 是控制的 profile 一等字段（非从 standards_refs 解析）。无 ce_area
+    的控制（如 AI 控制）**不进任何 CE-area 覆盖行**，改归 `unmapped["ce_area"]` 单列（R1：别把无映射伪装
+    成一个带分数的 area）。同一控制的 outcome 同时计入其 domain 行与 ce_area 行（同轴各算分母，互不影响）。
+    `csf2_function` 轴（多归属列表）仍延后——等真实 NIST CSF 消费者与「完整重复计入/分数分摊/primary
+    mapping」计数决策逼出再实现（见 ADR-0021）。
     """
     outcomes = [control_outcome(r) for r in reports]
+    if manifest is not None:
+        outcomes = outcomes + _not_assessed_outcomes(manifest, {o.control_id for o in outcomes})
     by_domain: dict[str, list[ControlOutcome]] = defaultdict(list)
+    by_ce_area: dict[str, list[ControlOutcome]] = defaultdict(list)
+    unmapped_ce_area: list[str] = []
     for o in outcomes:
         by_domain[o.domain or "unknown"].append(o)
-    return CoverageLedger(outcomes=outcomes, axes=_rollup_axis("domain", by_domain),
-                          generated_from=generated_from or [])
+        if o.ce_area:
+            by_ce_area[o.ce_area].append(o)
+        else:
+            unmapped_ce_area.append(o.control_id)   # R1：无 CE-area 归属 → 单列、不进覆盖行
+    axes = _rollup_axis("domain", by_domain) + _rollup_axis("ce_area", by_ce_area)
+    unmapped = {"ce_area": sorted(unmapped_ce_area)} if unmapped_ce_area else {}
+    return CoverageLedger(outcomes=outcomes, axes=axes,
+                          generated_from=generated_from or [], unmapped=unmapped)

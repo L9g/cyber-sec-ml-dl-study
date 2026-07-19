@@ -14,5 +14,8 @@ __pycache__/
 # 真跑输出（结果落 results/experiments.csv 才入 git；临时 json 不入）
 results/*.json
 
+# 跑测草稿产物（D8 等一次性 run 的 json/log），同上不入 git
+scratchpad_runs/
+
 # 差异化层派生产物（AssuranceReport = derive.py 从 run JSON 生成，可复现、不入 git）
 reports/*.json

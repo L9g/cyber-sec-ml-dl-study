@@ -26,7 +26,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from ithuriel.claim import derive_claims
-from ithuriel.ledger import build_ledger, control_outcome
+from ithuriel.ledger import CoverageLedger, build_ledger, control_outcome
 from ithuriel.manifest import AssessmentManifest
 from ithuriel.models import AiRunRecord, AssuranceReport, Claim, Finding
 
@@ -89,6 +89,7 @@ class ControlView(BaseModel):
     control_id: str
     title: Optional[str] = None
     domain: Optional[str] = None
+    ce_area: Optional[str] = None             # ADR-0021：Cyber Essentials area 下钻（AI 控制 None）
     # ③（搭档 P0，ADR-0017 §60）：ControlView 曾丢 target 身份——两台 FW-03 主机渲染成同名段落无法区分。
     # target_label = 供人读的目标标识（host_id / model + defense 变体）；targets = 各 Finding 的原始
     # target_ref（机器可读，bare/defended 两臂各一）。同一 control 跨主机不再折成一段。
@@ -114,13 +115,17 @@ class ControlView(BaseModel):
 
 
 class MatrixRow(BaseModel):
-    """coverage × (warrant, fidelity) 二维矩阵一行（per domain 轴）。
+    """coverage × (warrant, fidelity) 二维矩阵一行（per rollup 轴 key）。
 
     coverage/not_ready 直接来自 CoverageLedger.axes；fidelity/reproducibility 分布是把每个控制的
     confidence_basis 归并到轴上——**这一归并今天没有任何对象承载**（见 FRICTION 1）。
     单位对齐到「控制」：每份 report 贡献一个计数，与 coverage 分母同口径。
+
+    ADR-0021（P0#1）：第二根真实轴（Cyber Essentials area）出现后，行从 `domain: str` 泛化为
+    `axis` + `key`——domain 轴与 ce_area 轴共用同一行结构。domain 轴不被 ce_area 替换、两轴并存。
     """
-    domain: str
+    axis: str                                 # "domain" | "ce_area"
+    key: str                                  # domain 如 "network_security"；ce_area 如 "firewalls"
     applicable: int                           # 分母（not_applicable 出分母）
     passed: int
     # ⭐ 选项 A（ADR-0017）：coverage 是 **security 轴** 覆盖，取 defended 单臂 Finding.status（不重算
@@ -163,6 +168,9 @@ class Report(BaseModel):
     declared_controls: list[str] = Field(default_factory=list)      # 清单声明的全部控制（跨域）
     not_assessed_controls: list[str] = Field(default_factory=list)  # 声明了却整条无 report（跨域汇总）
     undeclared_assessed: list[str] = Field(default_factory=list)    # 评估了但清单未声明（越界，如实点名）
+    # ADR-0021（R1）：无 Cyber Essentials area 归属的控制（如 AI 控制）——不进 CE-area 覆盖行，此处单列
+    # 点名，呈现层的 CE-area 视图须显式披露「这些控制不在任何 CE area、未从该视图消失」。
+    ce_area_unmapped: list[str] = Field(default_factory=list)
 
 
 def _control_view(report: AssuranceReport) -> ControlView:
@@ -203,6 +211,7 @@ def _control_view(report: AssuranceReport) -> ControlView:
         control_id=(ctrl.id if ctrl else report.measurement_context.get("control_id", "UNKNOWN")),
         title=(ctrl.title if ctrl else None),
         domain=(ctrl.domain if ctrl else report.measurement_context.get("domain")),
+        ce_area=(ctrl.ce_area if ctrl else None),
         target_label=_target_label(targets),
         targets=targets,
         outcome=control_outcome(report).status,
@@ -218,51 +227,64 @@ def _control_view(report: AssuranceReport) -> ControlView:
     )
 
 
-def _matrix(reports: list[AssuranceReport],
-            manifest: Optional[AssessmentManifest] = None) -> list[MatrixRow]:
-    ledger = build_ledger(reports, manifest=manifest)
-    # ── FRICTION 1（grounding 预标，Step 1 现形）──────────────────────────────
+def _axis_keys(r: AssuranceReport) -> list[tuple[str, str]]:
+    """一份 report 归属的 (轴, key) 对。domain 恒有（缺→unknown）；ce_area 仅当控制有映射才加——
+    无 ce_area 的控制（如 AI 控制）不进 CE-area 覆盖行，改由 ledger.unmapped 单列（R1，ADR-0021）。"""
+    pairs: list[tuple[str, str]] = []
+    domain = (r.control.domain if r.control else r.measurement_context.get("domain")) or "unknown"
+    pairs.append(("domain", domain))
+    ce_area = r.control.ce_area if r.control else None
+    if ce_area:
+        pairs.append(("ce_area", ce_area))
+    return pairs
+
+
+def _matrix(reports: list[AssuranceReport], ledger: "CoverageLedger") -> list[MatrixRow]:
+    # ── FRICTION 1（grounding 预标；R2/ADR-0021 泛化）──────────────────────────
     # G2 要 coverage × fidelity 二维，但 CoverageLedger.axes 只带 coverage/not_ready，fidelity 埋在每条
-    # Claim.confidence_basis 里。**没有任何对象把二者配对**——故此处重走 reports、按 domain 归并 Claim 的
-    # fidelity/reproducibility 再挂回 ledger 轴。这是真实组装摩擦（Claim×Ledger 组合），本层靠 view 内
-    # join 化解、不改 schema；是否值得升成对象留 ADR-0017 记录。
-    fidelity_by_domain: dict[str, Counter] = defaultdict(Counter)
-    repro_by_domain: dict[str, Counter] = defaultdict(Counter)
-    unassessable_by_domain: dict[str, int] = defaultdict(int)
-    caveat_by_domain: dict[str, Counter] = defaultdict(Counter)   # 选项 A：passed 但 joint≠acceptable
-    joint_evaluated_by_domain: dict[str, bool] = defaultdict(bool)  # ④：本轴是否做过任一 bare/defended 联合裁定
+    # Claim.confidence_basis 里。**没有任何对象把二者配对**——故此处重走 reports、把 Claim 的
+    # fidelity/reproducibility 归并回 ledger 轴。第二根真实轴（ce_area）出现后，join 从 per-domain 泛化到
+    # per-(axis,key)：同一控制的 fidelity 同时计入其 domain 行与 ce_area 行。**泛化 join 循环、不复制两份**；
+    # FRICTION 1「是否升成承载对象」压力随第二轴变大——本刀仍不建对象、只记录加压（见 ADR-0021）。
+    fidelity: dict[tuple[str, str], Counter] = defaultdict(Counter)
+    repro: dict[tuple[str, str], Counter] = defaultdict(Counter)
+    unassessable: dict[tuple[str, str], int] = defaultdict(int)
+    caveat: dict[tuple[str, str], Counter] = defaultdict(Counter)   # 选项 A：passed 但 joint≠acceptable
+    joint_evaluated: dict[tuple[str, str], bool] = defaultdict(bool)  # ④：本轴 key 是否做过联合裁定
     for r in reports:
-        domain = (r.control.domain if r.control else r.measurement_context.get("domain")) or "unknown"
-        if r.comparisons:
-            joint_evaluated_by_domain[domain] = True
         assessable = [c for c in derive_claims(r) if c.assessable and c.confidence_basis is not None]
-        if assessable:
-            # report 级保真度单值（同一 mctx.execution_backend）→ 取一条即可、单位=控制。
-            cb = assessable[0].confidence_basis
-            fidelity_by_domain[domain][cb.target_fidelity] += 1
-            repro_by_domain[domain][cb.reproducibility] += 1
-        else:
-            unassessable_by_domain[domain] += 1
-        # 选项 A：本控制被算作 passed（defended 单臂 security-pass），但联合裁定不是 acceptable → 记警示。
-        # 只对 passed 控制记（未 pass 的控制其 outcome 已如实反映问题，无需再警示覆盖数）。
-        if control_outcome(r).status == "pass":
-            for cmp in r.comparisons:
-                jv = cmp.joint_verdict
-                if jv and jv != "acceptable":
-                    caveat_by_domain[domain][jv] += 1
+        # report 级保真度单值（同一 mctx.execution_backend）→ 取一条即可、单位=控制。
+        cb = assessable[0].confidence_basis if assessable else None
+        is_pass = control_outcome(r).status == "pass"
+        for ak in _axis_keys(r):              # 同一 report 同时贡献其 domain 行与 ce_area 行
+            if r.comparisons:
+                joint_evaluated[ak] = True
+            if cb is not None:
+                fidelity[ak][cb.target_fidelity] += 1
+                repro[ak][cb.reproducibility] += 1
+            else:
+                unassessable[ak] += 1
+            # 选项 A：本控制被算作 passed（defended 单臂 security-pass），但联合裁定不是 acceptable → 记警示。
+            # 只对 passed 控制记（未 pass 的控制其 outcome 已如实反映问题，无需再警示覆盖数）。
+            if is_pass:
+                for cmp in r.comparisons:
+                    jv = cmp.joint_verdict
+                    if jv and jv != "acceptable":
+                        caveat[ak][jv] += 1
 
     rows: list[MatrixRow] = []
-    for ax in ledger.axes:                    # ax.axis == "domain"
+    for ax in ledger.axes:                    # ax.axis ∈ {"domain", "ce_area"}
+        k = (ax.axis, ax.key)
         gate_status, gate_detail = _gate_status(ax.applicable, ax.passed, ax.not_ready, ax.gating_reason)
         rows.append(MatrixRow(
-            domain=ax.key, applicable=ax.applicable, passed=ax.passed,
+            axis=ax.axis, key=ax.key, applicable=ax.applicable, passed=ax.passed,
             coverage=ax.coverage, not_ready=ax.not_ready, gating_reason=ax.gating_reason,
             gate_status=gate_status, gate_detail=gate_detail,
-            joint_evaluated=joint_evaluated_by_domain[ax.key],
-            fidelity_mix=dict(fidelity_by_domain[ax.key]),
-            reproducibility_mix=dict(repro_by_domain[ax.key]),
-            unassessable=unassessable_by_domain[ax.key],
-            joint_caveats=dict(caveat_by_domain[ax.key]),
+            joint_evaluated=joint_evaluated[k],
+            fidelity_mix=dict(fidelity[k]),
+            reproducibility_mix=dict(repro[k]),
+            unassessable=unassessable[k],
+            joint_caveats=dict(caveat[k]),
             not_assessed_controls=list(ax.not_assessed_controls)))
     return rows
 
@@ -279,9 +301,12 @@ def render_report(reports: list[AssuranceReport],
     不再隐形；越界评估（清单未声明）也如实点名。None 时覆盖率分母仅「已评估」、可被输入选择做高——
     渲染层如实标此局限（见 to_markdown 顶部警示）。
     """
-    matrix = _matrix(reports, manifest)
+    ledger = build_ledger(reports, manifest=manifest)
+    matrix = _matrix(reports, ledger)
     reported_ids = sorted({control_outcome(r).control_id for r in reports})
-    not_assessed = sorted({cid for row in matrix for cid in row.not_assessed_controls})
+    # not_assessed 跨域汇总只从 domain 轴取（ce_area 轴会把同一 not_assessed 控制重复列，去重靠 domain 轴）。
+    not_assessed = sorted({cid for row in matrix if row.axis == "domain"
+                           for cid in row.not_assessed_controls})
     undeclared = (sorted(set(reported_ids) - manifest.control_ids()) if manifest else [])
     return Report(
         generated_from=(generated_from or [r.generated_from for r in reports]),
@@ -290,7 +315,8 @@ def render_report(reports: list[AssuranceReport],
         manifest_hash=(manifest.manifest_hash if manifest else None),
         declared_controls=(sorted(manifest.control_ids()) if manifest else []),
         not_assessed_controls=not_assessed,
-        undeclared_assessed=undeclared)
+        undeclared_assessed=undeclared,
+        ce_area_unmapped=ledger.unmapped.get("ce_area", []))
 
 
 # ── 渲染器（Step 2）：只格式化 Report、不重算任何裁定 ─────────────────────────
@@ -325,6 +351,28 @@ def _joint_cell(m: "MatrixRow") -> str:
     return "✔ 已评估无分歧" if m.joint_evaluated else "未评估（无防御实验）"
 
 
+# ADR-0021（P0#1）：一个轴的覆盖表渲染成独立区段（domain 视图 / CE area 视图共用）。返回本区段是否
+# 出现联合裁定警示（供顶层决定是否附 caveat 图例）。空区段（无该轴的行）如实标注、不留空白被误读。
+def _matrix_section(lines: list[str], rows: list["MatrixRow"], title: str, key_header: str) -> bool:
+    lines.append(title)
+    lines.append("")
+    if not rows:
+        lines.append(f"> （本报告无 {key_header} 轴的覆盖行。）")
+        lines.append("")
+        return False
+    lines.append(f"| {key_header} | 安全轴覆盖 | 门禁 / 缺口 | ⚠ 联合裁定 | 目标保真度 | 可复现 | 不可评估 |")
+    lines.append("|----|-----------|-----------|-----------|-----------|--------|---------|")
+    any_caveat = False
+    for m in rows:
+        if m.joint_caveats:
+            any_caveat = True
+        lines.append(f"| {m.key} | {m.passed}/{m.applicable} = {m.coverage} | {_gate_cell(m)} "
+                     f"| {_joint_cell(m)} | {_mix(m.fidelity_mix)} | {_mix(m.reproducibility_mix)} "
+                     f"| {m.unassessable} |")
+    lines.append("")
+    return any_caveat
+
+
 def to_json(report: Report, *, indent: int = 2) -> str:
     """Report → JSON 字符串（机器可读；字段即 Report 结构，无额外加工）。"""
     return report.model_dump_json(indent=indent)
@@ -356,20 +404,25 @@ def to_markdown(report: Report) -> str:
                      "`AssessmentManifest`（ADR-0019）。")
     lines.append("")
 
-    # ── 覆盖矩阵（安全轴覆盖 × 凭据/保真度）──
+    # ── 覆盖矩阵：按 domain 轴 + Cyber Essentials area 轴分区呈现（ADR-0021 P0#1）──
+    # 两轴并存、domain 不被 ce_area 替换。每个 area 的覆盖数命名「声明范围内 security 轴覆盖」，
+    # 绝不简称「Firewalls coverage」（那会把稀疏分母读成「防火墙已覆盖」）。
     lines.append("## 覆盖矩阵（安全轴覆盖 × 凭据 / 保真度）")
     lines.append("")
-    lines.append("| 域 | 安全轴覆盖 | 门禁 / 缺口 | ⚠ 联合裁定 | 目标保真度 | 可复现 | 不可评估 |")
-    lines.append("|----|-----------|-----------|-----------|-----------|--------|---------|")
-    any_caveat = False
-    for m in report.matrix:
-        caveat = _joint_cell(m)
-        if m.joint_caveats:
-            any_caveat = True
-        lines.append(f"| {m.domain} | {m.passed}/{m.applicable} = {m.coverage} | {_gate_cell(m)} "
-                     f"| {caveat} | {_mix(m.fidelity_mix)} | {_mix(m.reproducibility_mix)} | {m.unassessable} |")
-    lines.append("")
+    domain_rows = [m for m in report.matrix if m.axis == "domain"]
+    ce_rows = [m for m in report.matrix if m.axis == "ce_area"]
+    any_caveat = _matrix_section(lines, domain_rows, "### Domain 视图", "域")
+    any_caveat = _matrix_section(lines, ce_rows, "### Cyber Essentials area 视图", "CE area") or any_caveat
+    # R1（ADR-0021）：无 CE-area 归属的控制显式披露，绝不从 CE-area 视图静默消失，也不伪装成一个带分数的 area。
+    if report.ce_area_unmapped:
+        lines.append(f"> ⚠ **不在任何 Cyber Essentials area**（如 AI 控制）：{'、'.join(report.ce_area_unmapped)}"
+                     "——这些控制不映射到 CE area，故不出现在上表任何行；它们的裁定见下方控制详情与 Domain 视图，"
+                     "**未从报告消失，只是 CE 框架无对应 area**。")
+        lines.append("")
     lines.append("> 「安全轴覆盖」只算 security 轴（defended 单臂裁定），**不可单独读作「系统安全」**。")
+    lines.append("> 覆盖分母的单位是**每份 report 一个 outcome**（外加清单声明却未评估的控制），"
+                 "**不是**严格的「一控制一票」：同一控制跑在多台 target 上会计多个 outcome（例：FW-03 两台主机"
+                 "= 两个 outcome）。跨 target 的控制级归约是 ADR-0019 已知边界，本报告不做归约、只如实披露。")
     lines.append("> 「门禁 / 缺口」**刻意不产就绪档**：**无 High/Critical 门禁 ≠ ready**——Medium fail / 部分覆盖 / "
                  "全 inconclusive 都不触发门禁却仍非就绪，故 `incomplete` 明标未 pass 数；即便全适用 pass 也只标"
                  "「非系统 ready 结论」，不越权替部署方下整体就绪判断。")
@@ -388,7 +441,9 @@ def to_markdown(report: Report) -> str:
         title = f" {c.title}" if c.title else ""
         # ③：target_label 进标题——两台 FW-03 主机不再折成同名段落。
         target = f" @ {c.target_label}" if c.target_label and c.target_label != "unknown-target" else ""
-        lines.append(f"### [{c.control_id}]{title}{target} — {c.domain or 'unknown'}")
+        # ADR-0021：CE area 进详情供下钻回具体控制（无映射的 AI 控制显式标「无 CE area」，不留空）。
+        ce = f" · CE area {c.ce_area}" if c.ce_area else " · 无 CE area"
+        lines.append(f"### [{c.control_id}]{title}{target} — {c.domain or 'unknown'}{ce}")
         lines.append("")
         # 能说什么
         head = [f"结论 **{c.outcome}**"]

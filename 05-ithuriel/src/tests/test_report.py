@@ -35,6 +35,11 @@ from ithuriel.report import (
 FX = Path(__file__).parent / "fixtures"
 
 
+def _row(rep, key, axis="domain"):
+    """按 (轴, key) 取矩阵行（ADR-0021：矩阵含 domain + ce_area 两轴，选择器须指明轴）。"""
+    return next(r for r in rep.matrix if r.axis == axis and r.key == key)
+
+
 # ── 真实 report 工厂（冻结 fixture，确定性）─────────────────────────────────────
 def _ai(fixture="d8_run_detector.json") -> AssuranceReport:
     # detector 格：bare fail / defended pass（security 轴），joint_verdict=utility_failed。
@@ -64,19 +69,19 @@ def test_g2_matrix_surfaces_fidelity_alongside_coverage(demo):
     for row in demo.matrix:
         # 每个有覆盖的域必须同时带 fidelity 分布——coverage 不可脱离 fidelity 单独呈现。
         if row.applicable > 0:
-            assert row.fidelity_mix, f"{row.domain} 有覆盖却无 fidelity 分布（G2：不可折成标量）"
+            assert row.fidelity_mix, f"{row.axis}:{row.key} 有覆盖却无 fidelity 分布（G2：不可折成标量）"
 
 
 # ── 选项 A：security 轴覆盖 + joint_caveats 常驻 ─────────────────────────────────
 def test_option_a_utility_failed_flagged_beside_passing_coverage(demo):
-    ai = next(r for r in demo.matrix if r.domain == "ai_agent_security")
+    ai = _row(demo, "ai_agent_security")
     # detector 防御靠中止任务挡注入 → defended security-pass（覆盖 1.0）但 joint=utility_failed。
     assert ai.coverage == 1.0                       # security 轴覆盖照实（不重算 ledger）
     assert ai.joint_caveats.get("utility_failed") == 1  # 但警示常驻，读不成「系统安全」
 
 
 def test_option_a_no_caveat_when_no_joint_disagreement(demo):
-    net = next(r for r in demo.matrix if r.domain == "network_security")
+    net = _row(demo, "network_security")
     assert net.joint_caveats == {}                  # config 无 defense delta → 无联合裁定分歧
 
 
@@ -94,7 +99,7 @@ def test_friction1_fidelity_counts_align_with_coverage_denominator(demo):
         # not_assessed（ADR-0019）进 applicable 但无 report → 不在 fidelity_mix/unassessable，单列补齐。
         counted = sum(row.fidelity_mix.values()) + row.unassessable + len(row.not_assessed_controls)
         assert counted == row.applicable, (
-            f"{row.domain}: fidelity+unassessable+not_assessed={counted} 应等于 applicable={row.applicable}"
+            f"{row.axis}:{row.key}: fidelity+unassessable+not_assessed={counted} 应等于 applicable={row.applicable}"
             "（friction 1：join 单位必须=控制，与 coverage 分母一致）")
 
 
@@ -129,7 +134,8 @@ def test_g5_json_valid_and_audit_standards_present(demo):
     j = json.loads(to_json(demo))                    # 合法 JSON
     assert set(j.keys()) == {"generated_from", "matrix", "controls",
                              "manifest_hash", "declared_controls",
-                             "not_assessed_controls", "undeclared_assessed"}
+                             "not_assessed_controls", "undeclared_assessed",
+                             "ce_area_unmapped"}
     assert j["manifest_hash"] is None                # demo 无 manifest → 如实 None（覆盖率仅已评估）
     all_standards = [s for c in j["controls"] for s in c["standards"]]
     assert any("OWASP" in s for s in all_standards)  # AI 控制审计闭环
@@ -145,7 +151,7 @@ def test_empty_input_yields_empty_report_no_positive_claim():
 def test_gate_status_incomplete_when_medium_fail_present(demo):
     # config 两主机 = deny pass + allow fail(Medium)；无 High/Critical → not_ready=False，
     # 但 1/2 未 pass → 门禁/缺口判读必须显式 incomplete、不得读成 ready/清白。
-    net = next(r for r in demo.matrix if r.domain == "network_security")
+    net = _row(demo, "network_security")
     assert net.not_ready is False                    # ledger 原值：无 High/Critical 门禁
     assert net.gate_status == "incomplete"           # 但如实陈述：非就绪
     assert net.coverage < 1.0
@@ -158,7 +164,7 @@ def test_no_manufactured_readiness_verdict_field():
 
 
 def test_gate_status_all_pass_still_not_system_ready(demo):
-    ai = next(r for r in demo.matrix if r.domain == "ai_agent_security")
+    ai = _row(demo, "ai_agent_security")
     assert ai.gate_status == "all_applicable_passed"  # 全适用 pass 是事实陈述、非就绪判读
     # 关键：全 pass 也不越权断言系统 ready——detail 显式否定「系统 ready」。
     assert "ready" in (ai.gate_detail or "") and "非系统级" in (ai.gate_detail or "")
@@ -206,10 +212,10 @@ def test_attestation_0015_conflict_note_survives_to_view():
 
 # ── ④（搭档 P0，ADR-0017 §61）：joint_verdict 未评估 ≠ 无问题；显式区分 ─────────────────
 def test_deterministic_domain_marks_joint_not_evaluated(demo):
-    net = next(r for r in demo.matrix if r.domain == "network_security")
+    net = _row(demo, "network_security")
     assert net.joint_evaluated is False              # 无 bare/defended 对比
     assert net.joint_caveats == {}
-    ai = next(r for r in demo.matrix if r.domain == "ai_agent_security")
+    ai = _row(demo, "ai_agent_security")
     assert ai.joint_evaluated is True                # 有防御实验
 
 
@@ -242,18 +248,18 @@ def test_coverage_cannot_be_inflated_by_dropping_reports():
     mfst = _net_manifest()
     with_fail = render_report(reports, manifest=mfst)
     dropped_fail = render_report(reports[:2], manifest=mfst)   # 去掉 host-02（allow=fail）
-    net_a = next(r for r in with_fail.matrix if r.domain == "network_security")
-    net_b = next(r for r in dropped_fail.matrix if r.domain == "network_security")
+    net_a = _row(with_fail, "network_security")
+    net_b = _row(dropped_fail, "network_security")
     assert net_a.coverage < 1.0 and net_b.coverage < 1.0       # 两种输入都读不成满覆盖
     # 对照：无 manifest 时删 report 确实虚高到 1.0——正是 manifest 要堵的洞。
-    no_mfst = next(r for r in render_report(reports[:2]).matrix if r.domain == "network_security")
+    no_mfst = _row(render_report(reports[:2]), "network_security")
     assert no_mfst.coverage == 1.0
 
 
 def test_declared_but_unreported_controls_surface_as_not_assessed():
     reports = [_ai(), _fw03("deny_active.txt", "host-01"), _fw03("allow_active.txt", "host-02")]
     view = render_report(reports, manifest=_net_manifest())
-    net = next(r for r in view.matrix if r.domain == "network_security")
+    net = _row(view, "network_security")
     assert net.not_assessed_controls == ["CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-04"]
     assert net.applicable == 5 and net.passed == 1 and net.coverage == 0.2   # FW-03 两主机 + 三未评估
     assert view.not_assessed_controls == ["CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-04"]
@@ -299,3 +305,59 @@ def test_empty_or_duplicate_declaration_rejected():
     with pytest.raises(ValueError, match="重复"):
         AssessmentManifest(profile_id="uk", declared=[
             DeclaredControl(control_id="CE-UK-FW-01"), DeclaredControl(control_id="CE-UK-FW-01")])
+
+
+# ── Cyber Essentials area 视图（ADR-0021）─────────────────────────────────────────
+# profile 的 18 个 Cyber Essentials 控制（五 area 分布：firewalls/secure_config/user_access/malware/updates）。
+_ALL_CE_CONTROLS = [
+    "CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-03", "CE-UK-FW-04",
+    "CE-UK-SC-01", "CE-UK-SC-02", "CE-UK-SC-03", "CE-UK-SC-04",
+    "CE-UK-UA-01", "CE-UK-UA-02", "CE-UK-UA-03", "CE-UK-UA-04",
+    "CE-UK-MW-01", "CE-UK-MW-02", "CE-UK-MW-03",
+    "CE-UK-SU-01", "CE-UK-SU-02", "CE-UK-SU-03",
+]
+
+
+def test_matrix_carries_both_axes(demo):
+    # 两轴并存：domain 不被 ce_area 替换。
+    assert {r.axis for r in demo.matrix} == {"domain", "ce_area"}
+    fw = _row(demo, "firewalls", axis="ce_area")   # FW-03 两主机聚到 firewalls area
+    assert fw.applicable == 2                        # deny(pass) + allow(fail)
+    assert _row(demo, "network_security").applicable == 2  # 同两份 report 也在 domain 轴
+
+
+def test_ai_control_surfaced_as_unmapped_not_a_fake_area(demo):
+    # R1：AI 控制无 ce_area → 进 ce_area_unmapped、不成为带覆盖分的 area key，也不静默消失。
+    assert demo.ce_area_unmapped == ["AI-AGENT-PI-01"]
+    assert all(r.key != "ai_agent_security" for r in demo.matrix if r.axis == "ce_area")
+    md = to_markdown(demo)
+    assert "不在任何 Cyber Essentials area" in md and "AI-AGENT-PI-01" in md
+    assert "### Domain 视图" in md and "### Cyber Essentials area 视图" in md
+
+
+def test_ce_area_declaring_all_18_prevents_firewalls_reading_as_covered():
+    # P0#2：只跑 FW-03 却声明全部 18 CE 控制 → firewalls area 读作 1/4（三个未评估），
+    # **不会**读成 2/2 或「Firewalls 已覆盖」；未触及的四个 area 全 not_assessed。
+    reports = [_ai(), _fw03("deny_active.txt", "host-01")]
+    mfst = AssessmentManifest(profile_id="uk", declared=[
+        DeclaredControl(control_id="AI-AGENT-PI-01"),
+        *[DeclaredControl(control_id=c) for c in _ALL_CE_CONTROLS]])
+    view = render_report(reports, manifest=mfst)
+    fw = _row(view, "firewalls", axis="ce_area")
+    assert (fw.applicable, fw.passed, fw.coverage) == (4, 1, 0.25)
+    assert fw.not_assessed_controls == ["CE-UK-FW-01", "CE-UK-FW-02", "CE-UK-FW-04"]
+    # 未触及的 area 全部未评估（passed=0、全员 not_assessed）。
+    for area in ("secure_configuration", "user_access_control", "malware_protection"):
+        row = _row(view, area, axis="ce_area")
+        assert row.passed == 0 and len(row.not_assessed_controls) == row.applicable
+    # PI-01 assessed 但无 ce_area → 仍在 unmapped、不冒充 area。
+    assert view.ce_area_unmapped == ["AI-AGENT-PI-01"]
+    md = to_markdown(view)
+    assert "1/4 = 0.25" in md                         # firewalls 覆盖数如实稀疏，非 100%
+
+
+def test_cross_target_mixed_denominator_disclosed(demo):
+    # 决策 3：报告须披露分母单位=每份 report 一个 outcome（同控制多 target 计多票），本刀不做跨 target 归约。
+    md = to_markdown(demo)
+    assert "每份 report 一个 outcome" in md
+    assert "两个 outcome" in md and "ADR-0019 已知边界" in md

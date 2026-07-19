@@ -164,6 +164,79 @@ def test_low_severity_fail_does_not_gate():
 def test_four_control_ledger_all_domains():
     # 四形状全在一个 ledger：AI / config / probe / human_review 跨 3 域。
     ledger = build_ledger([_pi01(), _fw03(), _fw01("pass"), _su03("conformant")])
-    assert {a.key for a in ledger.axes} == {"ai_agent_security", "network_security",
-                                            "vulnerability_management"}
+    assert {a.key for a in ledger.axes if a.axis == "domain"} == {
+        "ai_agent_security", "network_security", "vulnerability_management"}
     assert len(ledger.outcomes) == 4
+
+
+# ── Cyber Essentials area 轴（ADR-0021）──────────────────────────────────────────
+def _ce(ledger, key):
+    return next(a for a in ledger.axes if a.axis == "ce_area" and a.key == key)
+
+
+def _fail_report(control_id):
+    """合成一个 fail outcome（control 取自注册表，severity 继承其 severity_if_failed）。
+
+    ⚠ 仅用于验 ce_area 轴的 gating **路由**（High fail 是否落到正确 area）；**不代表** control_id 已有
+    真实评估能力（如 CE-UK-FW-02 尚无 builder，见 ADR-0021 P0#3）。
+    """
+    ctrl = control(control_id)
+    f = Finding(control_id=control_id, target_ref={}, status="fail", severity=ctrl.severity_if_failed,
+                verdict_mode="automatic", assessed_at="2026-07-18T00:00:00+00:00",
+                evidence_refs=[], rationale="synthetic fail for ce_area gating-routing test")
+    mctx = {"control_id": control_id}
+    return AssuranceReport(
+        generated_from="test", measurement_context=mctx,
+        evidence_manifest=EvidenceManifest(run_root=content_hash({"f": control_id}, prefix="run:"),
+                                           measurement_context=mctx, artifacts={}, index={}),
+        findings=[f], comparisons=[],
+        scope=ScopeStatement(claim="x", in_scope={}, not_covered=[],
+                             measurement_valid=True, underpowered=None),
+        control=ctrl, referenced_standards={})
+
+
+def test_ce_area_axis_distinct_from_domain_axis():
+    # ce_area 与 domain 是不同分组：FW-03(domain network_security / area firewalls) 与
+    # SU-03(domain vulnerability_management / area security_updates) 在两轴落不同 key。
+    ledger = build_ledger([_fw03("deny_active.txt"), _su03("conformant")])
+    assert {a.key for a in ledger.axes if a.axis == "domain"} == {"network_security",
+                                                                  "vulnerability_management"}
+    assert {a.key for a in ledger.axes if a.axis == "ce_area"} == {"firewalls", "security_updates"}
+
+
+def test_ce_area_coverage_over_four_real_controls():
+    # 四真实控制：firewalls 聚 FW-01+FW-03（都 pass）→ 2/2；security_updates 聚 SU-03 → 1/1；
+    # PI-01 无 ce_area → 不进任何 area 行，改入 unmapped（R1）。
+    ledger = build_ledger([_pi01(), _fw03("deny_active.txt"), _fw01("pass"), _su03("conformant")])
+    fw = _ce(ledger, "firewalls")
+    assert (fw.applicable, fw.passed, fw.coverage) == (2, 2, 1.0)
+    su = _ce(ledger, "security_updates")
+    assert (su.applicable, su.passed) == (1, 1)
+    assert ledger.unmapped == {"ce_area": ["AI-AGENT-PI-01"]}
+    # R1：unmapped 的 AI 控制绝不出现成一个带覆盖分的 area key。
+    assert all(a.key != "not_mapped" for a in ledger.axes)
+
+
+def test_ai_control_has_no_ce_area_row_only_unmapped():
+    ledger = build_ledger([_pi01()])
+    assert [a for a in ledger.axes if a.axis == "ce_area"] == []
+    assert ledger.unmapped == {"ce_area": ["AI-AGENT-PI-01"]}
+
+
+def test_ce_area_gating_routes_high_fail_to_correct_area():
+    # P0#3：四真实控制里唯一 High 是 PI-01（无 ce_area），验不了 CE-area gating；用注册表里的
+    # High firewalls 控制 CE-UK-FW-02 合成 fail，确认 High fail 落到 firewalls 轴、触发 not_ready。
+    # 这验的是 rollup **路由**，不宣称 FW-02 已有评估能力（见 _fail_report / ADR-0021）。
+    ledger = build_ledger([_fw03("deny_active.txt"), _fail_report("CE-UK-FW-02")])
+    fw = _ce(ledger, "firewalls")
+    assert fw.not_ready is True
+    assert fw.gating_reason and "CE-UK-FW-02" in fw.gating_reason
+    # gating 只降就绪、不清零轴：deny(pass) 仍计入覆盖分子。
+    assert fw.passed == 1 and fw.applicable == 2
+
+
+def test_low_severity_ce_fail_does_not_gate_area():
+    # SU-03 non_conformant（Low）→ security_updates 覆盖降，但 Low 不触发 area gating。
+    ledger = build_ledger([_su03("non_conformant")])
+    su = _ce(ledger, "security_updates")
+    assert su.passed == 0 and su.coverage == 0.0 and su.not_ready is False

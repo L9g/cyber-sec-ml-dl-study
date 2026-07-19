@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-07-13
+Updated: 2026-07-19
 
 ## Current Project
 
@@ -236,3 +236,195 @@ Merged as PR #8; tests grew from 128 to 150. Full detail is in ADR 0016.
 - The milestone discussion should define at least: intended trial user and job-to-be-done; the smallest usable workflow and output; installation/onboarding; safe target and RoE boundaries; fixture/mock versus real execution claims; data-egress and credential handling; report/Claim presentation; failure and support expectations; acceptance criteria; and explicit non-goals.
 - Preserve the existing discipline while planning the trial: do not manufacture platform modules merely for completeness, do not collapse multidimensional warrant into a misleading single confidence score, and keep `assurance_level: none` until the evidence and fidelity genuinely justify a stronger claim.
 - No further design or coding was authorized in this session; resume from the user-trial milestone discussion.
+
+## User-Trial Authoring and LLM-Backend Boundary Discussion History (2026-07-15–16)
+
+The discussion that followed the first ProbeCandidate authoring attempt is preserved in the non-normative working memo
+`docs/Story-to-Probe与LLM后端能力边界_讨论备忘录.md`. It is deliberately not an ADR and does not authorize
+implementation, schema changes, paid model runs, or a roadmap commitment.
+
+Observed product signal:
+
+- The current `docs/trial/probe-candidate-template.md` is closer to an executable assurance-test specification than a
+  normal threat-intelligence intake form. It combines intelligence interpretation, threat modelling, environment/capability
+  mapping, deterministic security and utility oracle design, fixtures, state deltas, and positive/negative controls.
+- An ordinary cyber engineer without specific AI prompt-injection and evaluation training is unlikely to complete it
+  independently after merely reading, watching, or hearing an attack story. The reviewer-assisted calendar candidate and
+  the non-runnable long-memory candidate are evidence of this role mismatch.
+- ADR-0020 C1 currently conflates two hypotheses: whether the user can explain a relevant attack need, and whether the user
+  can perform probe/evaluation engineering. The trial primarily falsified the second; it has not yet established that the
+  user lacks the first job. Keep the compiler build gated, but do not infer that Story-to-Probe should be abandoned.
+
+Product boundary under discussion, not yet accepted:
+
+- Avoid the false binary between a closed probe library and arbitrary end-user executable authoring. The strongest current
+  direction is assisted co-authoring: the user owns the story, organisational relevance, real-world attacker assumptions,
+  and semantic confirmation; Ithuriel/probe engineers own capability mapping, payload/oracle design, controls, fidelity
+  gaps, and safe compilation; an identified reviewer owns promotion into the released assurance corpus.
+- The differentiating customer value is not typing every ProbeCandidate field by hand. It is being able to turn new threat
+  intelligence into a governed regression asset while retaining visible provenance for user statements, source extraction,
+  system inference, reviewer additions, and user confirmation.
+- A later expert view may expose the full ProbeCandidate to trained AI-security/assurance engineers, but ordinary users
+  should not receive arbitrary Python/shell/plugin execution, safety-tier declaration, RoE bypass, or self-promotion rights.
+- The primary user persona remains unresolved: ordinary cyber engineer, trained AI-security engineer, or an internal
+  assurance-service team. This is the next product decision, not a coding decision.
+
+Attack-support boundary under discussion:
+
+- Accepting and structuring a Story can be broad; executing it and producing a Finding/Claim must remain narrow.
+- Define support by required capabilities rather than attack-family names: entry surface, temporal mode, persistent state,
+  target actions, observability/oracle, reset/isolation, positive/negative controls, fidelity, and RoE/safety tier.
+- A probe is runnable only when its required capabilities are a subset of the combined environment, model-backend, and
+  policy capabilities. Missing core semantics produce a structured capability gap, not a misleading Finding.
+- Current AgentDojo Workspace scope is limited to mock indirect injection through tool/API output, calendar, and email,
+  with within-trial tool interactions and observable tool calls/state deltas/canaries. Do not claim support for cross-session
+  persistent memory, RAG-index mutation, inter-agent shared memory, real side effects, or attacks with no reliable oracle.
+- A calendar-based delayed injection may be a separately named surrogate for part of a long-memory story, but it cannot be
+  reported as a test of an agent's internal persistent memory. Preserve the original hypothesis as unsupported and state
+  exactly which semantics the surrogate drops.
+
+Local/cloud LLM boundary:
+
+- Ithuriel does not generally depend on cloud LLMs. Deterministic cyber/configuration slices, RoE/PEP, evidence integrity,
+  registry, Finding, CoverageLedger, Claim, human review, and reporting can run offline. The current AI slice already has
+  Ollama/local/OpenAI-compatible transport paths.
+- The hard constraint is role-specific capability, not local versus cloud. A target backend must reliably support the
+  required system messages, structured tool calls, valid arguments, tool-result continuation, multi-step loops, final
+  utility response, sufficient context, and enough throughput for repeated trials. Failure is an explicit backend or
+  measurement gap; it must never be interpreted as security or silently fall back to cloud.
+- Authoring assistant, adaptive attacker, and future LLM judge are separate roles with different requirements. If only one
+  local model is available, do not silently use it as target, attacker, and judge without disclosing dependence/independence
+  limits. Prefer deterministic oracles and human escalation.
+- Local deployment is potentially a first-class cyber-security mode because of data locality and version pinning, but it
+  needs richer provenance: weights/revision, quantisation, tokenizer/chat/tool template, inference engine, context and
+  sampling configuration, and possibly hardware.
+
+Post-prototype empirical order currently favoured, but not authorized:
+
+1. Merge/close the current prototype work.
+2. Run a bounded cross-model OpenRouter survey before designing a general backend evaluator.
+3. Use real compatibility, utility, error, cost, and provenance friction to freeze the first role-specific backend profile.
+4. Only then build a thin `Ithuriel LLM Backend Conformance Evaluator`, initially for the AgentDojo target role.
+
+Survey discipline discussed:
+
+- Sample roughly 8–10 representative deployments across proprietary frontier, production mid-cost/high-throughput, large
+  open-weight, and locally plausible medium/small open-weight classes; do not treat hidden parameter size as a universal axis.
+- Use a cheap benign backend smoke test before the fixed security matrix. Filter only on instrument compatibility, never on
+  whether an early security result looks favourable.
+- Pin the OpenRouter model and provider, disable fallbacks, require necessary parameters, and record served provenance;
+  otherwise the study measures a changing router rather than a reproducible deployment.
+- Separate backend compatibility, functional utility, security measurement, and operational cost. Do not publish a single
+  safety score or general model-resistance leaderboard. One attack wording is insufficient because existing runs already
+  show attack-variant-driven ASR swings.
+- Use a separate tightly capped project/key, synthetic fixtures only, staged budget gates, and no key in chat, code, logs, or
+  shell history. OpenRouter results can nominate local candidates but cannot substitute for actual local quantisation/runtime
+  testing.
+
+Long-memory engineering estimate and boundary:
+
+- Building a conversational demo with state carried across two sessions is relatively easy; building an assurance-grade,
+  resettable, observable, reproducible long-memory poisoning environment is materially harder. AgentDojo is an evaluation
+  framework (environment + tools + tasks + security/utility), not merely an agent to outperform.
+- Order-of-magnitude estimates, not commitments: a disposable demonstration is about 3–7 engineer-days; a narrow
+  Ithuriel-quality synthetic-memory slice with two phases, state snapshots/reset, layered deterministic oracles, controls,
+  Evidence/Finding/Claim and tests is about 4–8 weeks for an experienced engineer; a reusable internal lab is roughly two
+  engineers for 2–4 months; a general customer-facing platform is a multi-person 6–12+ month effort with ongoing maintenance.
+- If pursued later, phrase the slice as a bounded persistent-memory evaluation backend/positive-control target, not “build
+  an agent more powerful than AgentDojo”. Reuse an existing pipeline/runtime where possible; implement only poison phase ->
+  checkpoint -> clean-session trigger -> memory/tool/state oracle. Start with structured memory, not vector DB, embeddings,
+  summarisation, multi-agent messaging, or real side effects.
+- Stop and seek a different borrowed base if reliable snapshot/reset is unavailable, a clean second session cannot be
+  proven, the verdict needs only a subjective LLM judge, or the slice requires simultaneously building a memory platform,
+  workflow engine, and sandbox. A synthetic target calibrates probes and contract shape; it does not provide assurance about
+  a customer's real memory architecture.
+
+No ADR, schema, code, survey spend, capability registry, authoring UI/compiler, backend evaluator, or long-memory environment
+was authorized during this discussion. The unresolved product wording in this historical section is superseded by the
+accepted 2026-07-19 decisions below; the non-authorization boundary remains in force.
+
+## Story-to-Probe and Backend Qualification Decisions (2026-07-19)
+
+The original twelve discussion questions now have accepted working decisions. The detailed, non-normative record is
+`docs/Story-to-Probe与LLM后端能力边界_讨论备忘录.md`, especially §9.4–9.6. These decisions guide
+subsequent planning but do not by themselves authorize an ADR/schema change, implementation, paid model run, or roadmap
+commitment.
+
+### User, authoring, and execution boundary
+
+- The primary final user is a fully trained professional AI assurance engineer, either an internal assurance-team member
+  or an external professional. Ordinary IT security engineers and threat analysts may supply stories and organisational
+  context but are not the default full Probe authors or assurance adjudicators.
+- Story-to-Probe remains a user-visible core value. Its unproven product question is whether bringing the inevitable
+  story-to-test process into Ithuriel makes expert work faster, more consistent, and auditable, and whether a second story
+  inside the same capability profile can compile and run without story-specific runner/compiler/schema changes.
+- Provide Simplified and Advanced authoring modes, but both must compile to one canonical, immutable
+  ProbeCandidate/ProbePackage with identical validation and runtime semantics. AI may propose, normalize, and compile; it
+  does not independently publish, adjudicate, or authorize execution.
+- Story-to-Probe succeeds only when the semantically faithful Probe can actually execute end to end in Ithuriel with bound
+  environment/backend/policy capabilities, reset/isolation, positive and negative controls, security oracle, utility oracle,
+  and evidence output. Form completion or static compilation alone is insufficient.
+- In a small team the same assurance engineer may author and publish an immutable ProbeCandidate. A second qualified
+  `Execution Authorizer` is the single decisive human gate for whether, when, where, against what target, and within which
+  resource, action, side-effect, and RoE boundaries a red-team Probe runs. Authorization binds a concrete execution-request
+  hash; policy-relevant mutation invalidates it. Executor/PEP checks remain mechanical and fail closed rather than creating
+  recursive human approval layers during execution.
+
+### Initial capability and surrogate boundary
+
+- The provisional first executable profile is AgentDojo Workspace indirect prompt injection through tool/API output,
+  email, or calendar, within an isolated trial and T0–T2 mock side-effect boundary. This can change during development, but
+  the support and reporting boundary must change with it; it cannot expand silently.
+- A machine-readable `hypothesis_binding.relationship` distinguishes `direct` from `bounded_surrogate`. A bounded surrogate
+  has separate original and assessed hypothesis references and records preserved/omitted capabilities, prohibited claims,
+  and rationale. It never closes the original capability gap, never gives the original hypothesis coverage credit, and
+  supports Findings/Claims only about the narrower assessed hypothesis.
+- Long-memory poisoning is a strategic later capability, not v0.1. The first acceptable future slice is a two-session
+  persistent-memory mechanism: malicious content in Session A causes a recorded memory write; a clean Session B retrieves
+  it and causes a deterministic unauthorized tool action/state delta. It requires observable write/persist/retrieve/action
+  stages, clean/poisoned/benign/deletion counterfactuals, snapshot/reset, clean-session proof, trial isolation, and no
+  subjective LLM judge as the core oracle.
+- After AgentDojo IPI and a second same-profile Probe prove runtime reuse, a 3–7 day long-memory spike may investigate a
+  borrowed base. `Hidden in Memory` is the first audit candidate, AgentLAB a discovery reference, and a thin synthetic
+  memory protocol only a fallback. Stop if snapshot/reset, clean-session isolation, deterministic attribution, or a thin
+  Ithuriel seam cannot be achieved.
+
+### Local AI and OpenRouter survey
+
+- Local AI initially guarantees an explicit compatibility path, not a mandatory product-conformance acceptance matrix.
+  Local capability failure produces a machine-readable gap or `not_assessed`; it never silently falls back to cloud and an
+  OpenRouter result never substitutes for testing the exact local deployment.
+- The first OpenRouter survey is only about backend compatibility and the capability boundary of the AgentDojo target role.
+  It does not compare prompt-injection resistance, attack ASR, bare/defended deltas, or overall model safety.
+- Target eight representative, pinned deployments: two locally plausible small/medium open-weight, two common mid-size or
+  high-throughput, two large open-weight/MoE, and two commercial frontier. Freeze the exact list at survey start and retain
+  at least one deployment as a profile-design holdout.
+- Use three benign fixture classes: single tool call with valid JSON arguments; continuation after tool results; and a
+  multi-step tool loop with deterministic final utility. Run at most five repeats per class, for a planned maximum of
+  `8 × 3 × 5 = 120` fixture trials. A `5/5` result is preliminary survey eligibility, not a production SLA.
+- Provider and quantization are pinned and recorded deployment conditions, not first-round experimental variables. Pin the
+  model/provider, disable fallback, and record requested/served model, fingerprint, key parameters, usage, and cost.
+- The hard budget ceiling is `USD 50`; historical probe testing had cost about `USD 0.76` at the time of the decision. This
+  budget is a cap, not spend authorization. Start with a cheap pilot and stop/re-estimate on abnormal cost or configuration
+  drift.
+
+### Freezing the profile and placing the capability report
+
+- Freeze `ithuriel.agentdojo-target.v1` when the role-derived required/optional/operational capabilities are stable, planned
+  coverage is substantially complete (normally 8 deployments; at least 6 across all four strata and three model families
+  if services are unavailable), and the last three new deployments introduce no new mandatory capability or failure class.
+  The profile must also correctly predict `eligible`, `eligible_with_limits`, or `ineligible` for the holdout deployment,
+  and all configuration, fixture, provenance, cost, and artifacts must be reproducible. Up to two extra samples may be added
+  under the same hard budget if failure-mode saturation has not occurred; otherwise do not freeze and revisit scope.
+- Profile requirements come from the AgentDojo target role, not majority vote among models. Freezing v1 starts versioned
+  contract management; it does not imply permanent completeness, Local AI product acceptance, provider/quantization causal
+  evidence, attack-security conclusions, or a statistically established reliability SLA.
+- A Backend Capability Report is an immutable, content-addressed, machine-readable instrument-qualification artifact, not
+  a Finding, Claim, compliance opinion, model-safety rating, or target-control CoverageLedger entry. Capability states use
+  `supported / unsupported / unstable / not_verified`; overall qualification uses
+  `eligible / eligible_with_limits / ineligible / not_assessed`, avoiding security-verdict `pass/fail` semantics.
+- `MeasurementContext` should initially contain only an `instrument_qualification` binding with `profile_ref`,
+  `profile_hash`, `report_ref`, and `backend_configuration_hash`; the full capability report remains a separate artifact.
+  Preflight resolves the report and checks the exact configuration. Missing, stale, or mismatched qualification makes the
+  measurement invalid or a capability gap; it never creates a target pass/fail Finding. Keep this as a minimal open-dict
+  reference until a real preflight/report/Claim consumer forces a typed schema.

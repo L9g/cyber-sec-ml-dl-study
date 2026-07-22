@@ -1,0 +1,22 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "fdf8186bd0524cabe48b949c787a7a9788bae9d03132c80cf0e72835a47bd268",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 2.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "git:189563d,b6a0c48,41c2cca,b793eae,0eb6afd — AI-agent 对抗性复核（C1–C6/D1 修复）+ pilot 冒烟通过；结论记录在这些 commit message 中；按 ADR-0022 不构成人员独立性",
+  "valid_from": "2026-07-22T22:32:14Z",
+  "valid_until": "2026-07-23T00:12:14Z",
+  "notes": "C2 重跑第二步 main：C1 修复后落定或推翻 provisional c2_pass。三臂全新样本，不并入首次 C2/stage-1/pilot。取代首次 C2 作 additive 族结论来源，首次 artifact 保留不改。"
+ }
+}

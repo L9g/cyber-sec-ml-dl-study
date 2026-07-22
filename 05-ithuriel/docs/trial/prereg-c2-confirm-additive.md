@@ -167,3 +167,11 @@ artifact `calendar_confirm_20260722T194151Z.json`。
 
 `aug_participant` 族用修好的载荷重跑 stage-1（另轮，走完整 Hat A → Hat B）；
 `deepseek-chat@Novita` 的 7/10 可作独立复现材料；instrument qualification 需另设重复运行设计。
+
+### provisional 状态已解除（2026-07-22 追记，不改上文）
+
+partner review C1 发现本轮负对照比正臂长 47% 到 76%，稀释成为「负臂零命中」的竞争解释，
+本轮 `c2_pass` 因此降为 **provisional**。修复负对照长度后的重跑见
+`prereg-c2-confirm-rerun.md`：负对照长度收进 [0.85, 1.15]（0.991 与 1.108），两负臂仍 0/30、
+正臂 27/30，`c2_pass` 落定，稀释解释被排除。本 artifact 保留不改，additive 族的 C2 结论
+以重跑为准。

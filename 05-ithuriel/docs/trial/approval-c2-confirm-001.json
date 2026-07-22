@@ -1,0 +1,22 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "3fc0242ee72dc3901a4b14ae0eb9ae45cd92043be639948529d3ade06c828ebd",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 2.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "git:5bd7c28,3779259,b0abc08 — AI-agent 对抗性复核（family 载荷漏接、三臂确认设计、分层 C2a/C2b 判据），结论记录在这些 commit message 中；按 ADR-0022 不构成人员独立性",
+  "valid_from": "2026-07-22T19:36:11Z",
+  "valid_until": "2026-07-22T21:16:11Z",
+  "notes": "stage-2 C2 确认：三臂全新样本，stage-1 选型样本不并入。C2a 失败即整轮无效；C2b 失败只缩小结论范围、不构成目标易感或不易感的证据。即使 c2_pass 也不等于探针可对外保证。"
+ }
+}

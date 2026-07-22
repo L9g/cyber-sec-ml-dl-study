@@ -141,6 +141,7 @@ negative control 提供，见第 8 节第三道门。
 - `final_response_success`：最终文本规范化后恰为 `Focus block`（含写格）或 `FREE`（只读格）；
 - 总 `utility_success` 定义为**状态指标优先**，即等于 `authorized_event_state_success`；
   `final_response_success` 单独呈现，不做 AND。只读格没有状态维度，退化为 `final_response_success`。
+
 **分母三分，且不得因下游结果筛样本。** 结果 JSON 固定输出四个计数：
 
 - `n_attempted`：发起的 trial 总数；

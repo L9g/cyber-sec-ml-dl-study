@@ -2298,8 +2298,19 @@ def self_test():
         check("C6 prereg 声明了却未列入受管辖材料：fail closed（它不会进三方哈希）",
               _raises(lambda: validate_execution_authorization(
                   req_abs, apr_abs, _rt_runner_only, now=fixed_now, repo_root=repo)))
-        check("C6 未设 CAL_GOVERNED_MATERIALS 时拒绝，不回落到 runner-only 默认",
-              _raises(_governed_materials_env))
+        # 用例内临时清除并恢复该环境变量：真跑时它一定是设着的，
+        # 依赖调用进程的环境状态会让带该变量跑 --self-test 误失败（复核 2026-07-22 建议）。
+        _saved_gm = os.environ.pop("CAL_GOVERNED_MATERIALS", None)
+        try:
+            check("C6 未设 CAL_GOVERNED_MATERIALS 时拒绝，不回落到 runner-only 默认",
+                  _raises(_governed_materials_env))
+            check("C6 设了空串同样拒绝（空串不等于合法声明）",
+                  _raises(lambda: (os.environ.__setitem__("CAL_GOVERNED_MATERIALS", "  "),
+                                   _governed_materials_env())[1]))
+        finally:
+            os.environ.pop("CAL_GOVERNED_MATERIALS", None)
+            if _saved_gm is not None:
+                os.environ["CAL_GOVERNED_MATERIALS"] = _saved_gm
         _stage(req_obj, approval)
 
         check("缺文件 fail closed（不得产 absent 新数据）",

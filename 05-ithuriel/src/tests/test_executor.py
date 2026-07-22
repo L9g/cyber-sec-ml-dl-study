@@ -125,3 +125,28 @@ def test_receipt_is_execution_fact_only():
     assert receipt.exit_code == 0 and receipt.raw_artifact_ref.kind == "nmap-xml/v1"
     # receipt 不携带 Finding/status（execution fact only）。
     assert not any(k in receipt.model_dump() for k in ("status", "finding", "verdict"))
+
+
+# ── partner review 2026-07-22 C4：端口文法在类型层与策略层各自独立守住 ──
+@pytest.mark.parametrize("ports", [(), (0,), (-1,), (65536,), (70000,)])
+def test_invalid_ports_refused_at_construction(ports):
+    with pytest.raises(Exception):
+        NetworkPortScanAction(target_ip="192.0.2.1", ports=ports, scan_profile="tcp-connect")
+
+
+def test_duplicate_ports_normalised_so_action_hash_is_unique():
+    a = NetworkPortScanAction(target_ip="192.0.2.1", ports=(443, 80, 80), scan_profile="tcp-connect")
+    b = NetworkPortScanAction(target_ip="192.0.2.1", ports=(80, 443), scan_profile="tcp-connect")
+    assert a.ports == (80, 443) and a.action_hash == b.action_hash
+
+
+@pytest.mark.parametrize("ports,reason", [((), "ports_empty"), ((0,), "port_out_of_range"),
+                                          ((65536,), "port_out_of_range")])
+def test_policy_layer_rechecks_ports_even_if_model_bypassed(ports, reason):
+    # model_construct 绕过 pydantic 校验；策略层必须独立拦下（两道门不得互相依赖）。
+    bad = NetworkPortScanAction.model_construct(
+        kind="network.port_scan", tool="nmap", target_ip="192.0.2.1",
+        ports=ports, scan_profile="tcp-connect", label="")
+    roe = RoEAuthorization(roe_version="v1", allowed_targets=["192.0.2.1/32"])
+    d = preflight(bad, roe)
+    assert d.allowed is False and d.reason == reason

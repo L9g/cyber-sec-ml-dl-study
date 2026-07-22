@@ -140,7 +140,8 @@ def _su03(decision="conformant"):
     from ithuriel.attestation import ExceptionEntry, ReviewAttestation
     from ithuriel.attestation import build_report as su03_report
     reg = [ExceptionEntry(exception_id="EXC-1", justification_ref="CHG-1")]
-    att = ReviewAttestation(reviewer="r", review_date="2026-06-30", decision=decision, statement="s")
+    att = ReviewAttestation(reviewer="r", review_date="2026-06-30", decision=decision, statement="s",
+                      attested_refs=["EXC-1"])
     return su03_report(register=reg, attestation=att, host_id="h")
 
 

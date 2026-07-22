@@ -14,7 +14,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+import datetime
+
+from pydantic import BaseModel, field_validator, model_validator
 
 from ithuriel.capability import (
     CAPABILITY_BRIDGE_PROVENANCE,
@@ -53,12 +55,43 @@ class ExceptionEntry(BaseModel):
 
 
 class ReviewAttestation(BaseModel):
-    """reviewer 对登记的人工裁定（fixture-first：冻结的人工决定）。**这是裁定源**。"""
+    """reviewer 对登记的人工裁定（fixture-first：冻结的人工决定）。**这是裁定源**。
+
+    ⭐ 结构完整性在类型层强制（partner review 2026-07-22 C5）：此前 reviewer、日期、声明、
+    引用全空的 attestation 仍能产出 human-review `pass` 且 `measurement_valid=True`，
+    rationale 退化成「reviewer= 于  裁定 conformant」——形式上有对象、实质上没有可归责的人、
+    时间、声明或被审材料。系统仍不第二次猜人的裁定，只验证「人工裁定证据确实成形」。
+    """
     reviewer: str
     review_date: str
     decision: Literal["conformant", "non_conformant", "insufficient_evidence"]
     statement: str
     attested_refs: list[str] = []      # reviewer 检视的登记 id / 文档引用
+
+    @field_validator("reviewer", "statement")
+    @classmethod
+    def _non_empty(cls, v: str, info) -> str:
+        if not (v or "").strip():
+            raise ValueError(f"{info.field_name}_empty：无可归责的人或声明，不构成人工裁定证据")
+        return v.strip()
+
+    @field_validator("review_date")
+    @classmethod
+    def _parseable_date(cls, v: str) -> str:
+        try:
+            datetime.date.fromisoformat((v or "").strip()[:10])
+        except ValueError as exc:
+            raise ValueError(f"review_date_unparseable: {v!r}") from exc
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _refs_required_for_decisive(self):
+        # 下结论（conformant / non_conformant）必须说明审了什么；insufficient_evidence 例外，
+        # 因为「证据不足」本身就可能意味着没有可引用的材料。
+        if self.decision in ("conformant", "non_conformant") and not self.attested_refs:
+            raise ValueError("attested_refs_empty：裁定 "
+                             f"{self.decision} 必须声明所审材料")
+        return self
 
 
 def _register_completeness(entries: list[ExceptionEntry]) -> dict[str, Any]:
@@ -108,6 +141,13 @@ def build_report(*, register: list[ExceptionEntry],
     else:
         status = _DECISION_TO_STATUS[attestation.decision]
         note = ""
+        # ⭐ 引用必须解析得到本次 register/artifact：引用不到的材料等于没审（C5）。
+        known_refs = {e.exception_id for e in register} | set(artifacts)
+        dangling = [r for r in attestation.attested_refs if r not in known_refs]
+        if dangling and status == "pass":
+            status = "inconclusive"
+            note = (f"（⚠ attested_refs {dangling} 无法解析到本次登记或 artifact —— "
+                    "所审材料不可核验，降为 inconclusive、不给 pass）")
         # advisory：人工裁定 conformant 但登记结构不全 → **surface 差异、不 override**。
         if status == "pass" and completeness["unjustified_ids"]:
             note = (f"（⚠ advisory：reviewer 裁定 conformant，但登记中 "

@@ -61,8 +61,13 @@ def test_no_attestation_is_inconclusive_not_pass():
 # ── advisory：结构差异 surface、不 override 人工裁定 ─────────────────────────
 def test_incomplete_register_surfaces_advisory_without_overriding():
     # reviewer 裁定 conformant，但登记有条目缺 justification → 仍 pass（承载人工裁定），rationale 带 advisory。
+    # ⚠ attested_refs 必须解析到**本次**登记（partner review C5）。此处用 EXC-001/EXC-003
+    # 与 register_incomplete 对齐，保持本测试原意：测的是「结构差异不 override 人工裁定」，
+    # 而不是「引用挂不上这份 artifact」——后者是 measurement validity，另有测试覆盖。
+    att = ReviewAttestation(**{**json.loads((FIX / "attestation_conformant.json").read_text()),
+                               "attested_refs": ["EXC-001", "EXC-003"]})
     rep = build_report(register=_register("register_incomplete.json"),
-                       attestation=_attest("attestation_conformant.json"), host_id="h")
+                       attestation=att, host_id="h")
     f = rep.findings[0]
     assert f.status == "pass"                       # 不被结构差异 override
     assert "advisory" in f.rationale and "EXC-003" in f.rationale
@@ -112,3 +117,37 @@ def test_capability_mismatch_unsupported_gap():
 
 def test_run_root_bit_reproducible():
     assert _report().evidence_manifest.run_root == _report().evidence_manifest.run_root
+
+
+# ── partner review 2026-07-22 C5：结构不完整的 attestation 不得产出保证层 pass ──
+@pytest.mark.parametrize("kw,why", [
+    (dict(reviewer="", review_date="2026-06-30", decision="conformant",
+          statement="s", attested_refs=["EXC-001"]), "无可归责的人"),
+    (dict(reviewer="r", review_date="2026-06-30", decision="conformant",
+          statement="", attested_refs=["EXC-001"]), "无声明"),
+    (dict(reviewer="r", review_date="last tuesday", decision="conformant",
+          statement="s", attested_refs=["EXC-001"]), "日期不可解析"),
+    (dict(reviewer="r", review_date="2026-06-30", decision="conformant",
+          statement="s", attested_refs=[]), "下结论却未声明所审材料"),
+])
+def test_incomplete_attestation_refused_at_construction(kw, why):
+    with pytest.raises(Exception):
+        ReviewAttestation(**kw)
+
+
+def test_insufficient_evidence_may_omit_refs():
+    # 「证据不足」本身就可能意味着没有可引用的材料，不强制 attested_refs。
+    a = ReviewAttestation(reviewer="r", review_date="2026-06-30",
+                          decision="insufficient_evidence", statement="材料不足")
+    assert a.attested_refs == []
+
+
+def test_refs_not_resolvable_degrades_to_inconclusive_not_pass():
+    # 引用挂不到本次登记 = reviewer 审的是另一份材料 → measurement validity 问题，
+    # **不是** ADR-0015 说的「结构差异不 override 人工裁定」，故降 inconclusive 而非 pass。
+    att = ReviewAttestation(**{**json.loads((FIX / "attestation_conformant.json").read_text()),
+                               "attested_refs": ["EXC-999"]})
+    rep = build_report(register=_register("register_complete.json"), attestation=att, host_id="h")
+    f = rep.findings[0]
+    assert f.status == "inconclusive"
+    assert "EXC-999" in f.rationale and "无法解析" in f.rationale

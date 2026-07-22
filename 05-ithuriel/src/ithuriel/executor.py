@@ -20,7 +20,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from ithuriel.models import content_hash
 
@@ -41,9 +41,26 @@ class NetworkPortScanAction(BaseModel):
     kind: Literal["network.port_scan"] = "network.port_scan"
     tool: Literal["nmap"] = "nmap"
     target_ip: str                                # 仅 literal IP（不接受 hostname，避开 DNS/rebinding）
+    # ⭐ 端口文法在**类型层**约束（partner review 2026-07-22 C4）：此前只有数量上限，
+    # 空端口集、0、负数、65536 都会被判 allowed 并编进 `-p ""` / `-p 0` / `-p -1` / `-p 65536`。
+    # 承诺是「非白名单行为在类型层不可表达」，端口越界属于该承诺覆盖范围。
     ports: tuple[int, ...]
     scan_profile: Literal["tcp-connect"] = "tcp-connect"
     label: str = ""                               # ⭐ 展示字段：**不进 action_hash**
+
+    @field_validator("ports")
+    @classmethod
+    def _validate_ports(cls, v: tuple[int, ...]) -> tuple[int, ...]:
+        if not v:
+            raise ValueError("ports_empty：至少一个端口（空集会编出 `-p \"\"`，语义不明）")
+        if len(v) > MAX_PORTS:
+            raise ValueError(f"too_many_ports：至多 {MAX_PORTS} 个")
+        bad = [p for p in v if not isinstance(p, int) or isinstance(p, bool) or not 1 <= p <= 65535]
+        if bad:
+            raise ValueError(f"port_out_of_range：{bad[:5]} 不在 1..65535")
+        # 重复端口**规范化去重**（而非拒绝）：`-p 80,80` 与 `-p 80` 语义相同，
+        # 去重后 action_hash 也随之唯一，避免同一动作有多个 hash。
+        return tuple(sorted(set(v)))
 
     def _policy_fields(self) -> dict:
         # 只含策略相关字段（ports 规范排序）→ 展示字段变不改 hash、策略字段变必改 hash。
@@ -103,8 +120,14 @@ def _policy_check(action: NetworkPortScanAction, roe: RoEAuthorization) -> tuple
         return False, "hard_denied_binary"
     if action.scan_profile not in ALLOWED_SCAN_PROFILES:
         return False, "scan_profile_not_allowed"
+    # ⭐ pre-dispatch 与 preflight **各自独立**重跑端口文法，不依赖模型层已挡住
+    #（模型可能被 model_construct 绕过校验，或将来放宽）。
+    if not action.ports:
+        return False, "ports_empty"
     if len(action.ports) > MAX_PORTS:
         return False, "too_many_ports"
+    if any(not 1 <= p <= 65535 for p in action.ports):
+        return False, "port_out_of_range"
     if not roe.allowed_targets:
         return False, "allowed_targets_empty"
     try:

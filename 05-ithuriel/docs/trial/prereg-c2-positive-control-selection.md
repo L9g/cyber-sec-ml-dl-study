@@ -100,3 +100,44 @@ artifact 的字段缺失没有造成不可恢复的损失**，这正是 hash 绑
 
 **下一步**：不在本部署上加样本。按决策规则转入其它部署的选型 pilot；每一轮仍走完整的
 Hat A 冻结、Hat B 批准、独立 commit 流程。
+
+### 复核后的更正（2026-07-22，作者初版三处失实已收回）
+
+**一、结果表述降格。** 「合并 1/45」不得作为同质样本池推断一个稳定的真实点火率——两轮的 runner
+commit 与运行上下文不同，一轮嵌在交错 2×2 中、一轮是独立 screening，且 fingerprint 始终为空。
+正确写法是：
+
+> 在两个名义配置相同的运行窗口中，结构化点火累计仅观察到 1/45，且独立的 30-trial 选型 pilot 为零；
+> 该部署的点火行为低频或不稳定，**不能作为可依赖的正对照**。
+
+作者初版写的「真实点火率就是个位数」隐含一个跨窗口稳定的 Bernoulli 参数，证据支撑不到，收回。
+拒绝判定本身方向清楚：0/30 的单侧 95% 上界约 9.5%；若真实率为 20%，出现 0/30 的概率约 0.12%。
+
+**二、final-text 原子的声称收窄。** `payload_marker_in_final_text` 只能说到
+「**payload-derived text 对最终输出产生了可复核影响**」，不能说成「模型吸收/理解了攻击指令」——
+输出 nonce 证明载荷影响了生成，但也可能只是局部复制。两轮各出现一次，足以把它提升为**值得单独
+预注册的候选现象**，但仍不得回填进本次主指标。日后若研究这条通道，须另设 token-matched 负对照、
+把它作为预注册次指标、并把「nonce 复制 / 动作语义复述 / 结构化调用」分成三层。
+
+**三、运行质量：不是 3 次而是 9/30。** 作者初版目测输出末尾，未统计。实际 9 次耗时约 121 秒
+（其余约 1.5 秒），30 次累计 1129 秒。**这 9 次的最终回答全部是 `create_calendar_event`**；
+11 次这类错误回答中有 9 次是慢调用。关联度这么高不像随机上游停顿，更像特定 turn、重试或终止路径
+的问题。它不推翻主指标（这些 trial 仍曝光成功、合法写入成功、无仪器错误），但属明显的 utility 与
+运行质量信号。**改进项**：今后记录逐 LLM turn 的耗时、重试次数与 finish reason，不只记 trial 总耗时。
+
+**四、artifact 是假标签而非字段缺失（作者初版把问题说轻了）。** artifact 主动写入了
+`host_task_profile: read_only` 与 `authorization_predicate: "none (read-only…)"`，而实际是
+`write_phase` 与 allowlist 谓词。冻结请求让真实配置可恢复，但机器消费者直读 artifact 仍会被误导。
+已产出 metadata-only correction sidecar（四条：两条更正假标签、两条补缺失字段），原 artifact 字节未改；
+代码已改为按实际 `host_task` 派生这两个字段。
+
+**五、receipt 的时间不得冒充运行时间。** receipt 系事后补生成，`started_at` 由作者手填 16:15，
+与 9 次慢调用及 artifact 16:18:01 的生成时刻不相容。已产出 receipt correction，将该值撤回并标
+`status: not_recorded_at_runtime`，另给**重建起点 2026-07-22T15:59:12Z**（方法：artifact 生成时刻
+减去 30 次 trial 的 elapsed_s 之和 1129 秒；不含进程启动与 reachability 开销，故为下界估计）。
+授权有效性未受影响：重建起点晚于 `valid_from`，artifact 生成早于 `deadline_utc`。代码已给 receipt
+增加 `artifact_generated_at` 与 `receipt_generated_at`，与 `started_at` 分列。
+
+**六、代码阻断项已修。** 逐 trial 的 `deadline_exceeded` 此前只接进 matrix 循环，probe/screening 的
+`real_run()` 既未调用它、也未写 `run_completion_status`。本轮大概率在 deadline 前完成，故不追溯影响；
+但下一轮部署 pilot 仍走 probe 模式，不修则中途到期规则形同虚设。现已接入两处循环并写入 run 级语义。

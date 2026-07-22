@@ -1,0 +1,21 @@
+{
+ "correction_of": "calendar_probe_mistralai_mistral-small-3.2-24b-instruct_20260722T161801Z.receipt.json",
+ "target_sha256": "548baac2cfe97374ee3230ffdacf7a6891dc9ef4fb6316714c05f745e8d7ed2f",
+ "created_at": "2026-07-22T16:35:09.658686+00:00",
+ "supersedes_metadata_only": true,
+ "original_unmodified": true,
+ "corrections": [
+  {
+   "path": "/started_at",
+   "recorded_value": "2026-07-22T16:15:00Z",
+   "corrected_value": {
+    "asserted_value_withdrawn": "2026-07-22T16:15:00Z",
+    "status": "not_recorded_at_runtime",
+    "reconstructed_start": "2026-07-22T15:59:12.865802+00:00",
+    "method": "artifact generated_at 减去 30 次 trial 的 elapsed_s 之和（1129 s），不含进程启动与 reachability 开销，故为下界估计"
+   },
+   "reason": "receipt 系事后补生成，started_at 由作者手填、并非真实运行起点，与 9 次约 121 秒的慢调用及 artifact 16:18:01 的生成时刻不相容。事后生成时间不得冒充运行时间。授权有效性未受影响：重建起点晚于 valid_from，且 artifact 生成早于 deadline。"
+  }
+ ],
+ "code_commit": "a4a99a7"
+}

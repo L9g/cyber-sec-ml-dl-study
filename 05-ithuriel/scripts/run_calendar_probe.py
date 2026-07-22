@@ -739,8 +739,11 @@ def write_run_receipt(artifact_path, meta, primary, started_at, out_dir="docs/tr
         "authorization_status": meta.get("authorization_status"),
         "analysis_eligibility": meta.get("analysis_eligibility"),
         "run_level_analysis_eligibility": meta.get("run_level_analysis_eligibility"),
-        "started_at": started_at, "finished_at": datetime.datetime.now(
-            datetime.timezone.utc).isoformat(),
+        # started_at 必须是**真实运行起点**；事后补生成 receipt 时不得用当下时间冒充，
+        # 应传 None 并另记重建值（见 2026-07-22 receipt correction）。
+        "started_at": started_at,
+        "artifact_generated_at": meta.get("generated_at"),
+        "receipt_generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "verdict": primary.get("verdict"),
     }
     p = os.path.join(out_dir, os.path.basename(artifact_path).replace(".json", ".receipt.json"))
@@ -2001,6 +2004,36 @@ def _stall_note(a):
     return "full chain 命中"
 
 
+def write_corrections_sidecar(artifact_path, corrections, code_commit=None, out_path=None,
+                              suffix=".correction.json"):
+    """多字段版：`corrections` 为 [{path, corrected_value, reason}, ...]。原文件绝不修改。"""
+    raw = open(artifact_path, "rb").read()
+    doc = json.loads(raw.decode())
+
+    def _read(field_path):
+        node, *rest = field_path.strip("/").split("/")
+        cur = doc.get(node, {})
+        for k in rest[:-1]:
+            cur = cur.get(k, {})
+        return cur.get(rest[-1]) if rest else doc.get(node)
+
+    side = {
+        "correction_of": os.path.basename(artifact_path),
+        "target_sha256": hashlib.sha256(raw).hexdigest(),
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "supersedes_metadata_only": True,
+        "original_unmodified": True,
+        "corrections": [{"path": c["path"], "recorded_value": _read(c["path"]),
+                         "corrected_value": c["corrected_value"], "reason": c["reason"]}
+                        for c in corrections],
+        "code_commit": code_commit,
+    }
+    out_path = out_path or (os.path.splitext(artifact_path)[0] + suffix)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(side, f, ensure_ascii=False, indent=1)
+    return out_path, side
+
+
 def write_correction_sidecar(artifact_path, field_path, corrected_value, reason,
                              code_commit=None, out_path=None):
     """给已产出的 artifact 写**不可变更正 sidecar**（原文件绝不修改）。
@@ -2272,10 +2305,17 @@ def real_run():
     bare = build_pipeline(prov, model, None)
     arms = {a: [] for a in arms_req}
 
+    terminated_on_deadline = False
+    completed_trials = 0
     if screening:
         for i in range(n):
+            if deadline_exceeded(auth_meta["deadline_utc"]):
+                terminated_on_deadline = True
+                print(f"[probe] 批准窗口到期，在第 {i}/{n} 次 trial 前停止（已完成的 trial 仍有效）")
+                break
             arms["positive"].append(
                 _log(one_trial(bare, True, "positive", rung, host_task), "pos", i))
+            completed_trials += 1
     else:
         # 成对随机交错：每对内 coin flip 谁先，抵消短时 provider 漂移的系统性偏置
         plan = []
@@ -2284,9 +2324,14 @@ def real_run():
             random.Random(SEED + i).shuffle(pair)
             plan.extend(pair)
         for arm, mal in plan:
+            if deadline_exceeded(auth_meta["deadline_utc"]):
+                terminated_on_deadline = True
+                print("[probe] 批准窗口到期，停止后续 trial（已完成的 trial 仍有效）")
+                break
             arms.setdefault(arm, [])
             arms[arm].append(_log(one_trial(bare, mal, arm, rung, host_task),
                                   arm[:3], len(arms[arm])))
+            completed_trials += 1
 
     A = {k: agg(v) for k, v in arms.items()}
     notes = []
@@ -2343,8 +2388,13 @@ def real_run():
                     "interleaved": not screening, "seed": SEED,
                     "create_path_reachability": "GREEN",
                     "emission_recorder_installed": bool(getattr(bare, "_emission_recorder_installed", False)),
-                    "host_task_profile": "read_only",   # 含写宿主任务待操作员批准，未接入
-                    "authorization_predicate": "none (read-only: 任何 create 均未授权)",
+                    **run_completion_status(phase, terminated_on_deadline, completed_trials,
+                                            n * len(arms_req), auth_meta["analysis_eligibility"]),
+                    "deadline": auth_meta["deadline_utc"],
+                    "host_task_profile": host_task,
+                    "authorization_predicate": (
+                        "none (read-only: 任何 create 均未授权)" if host_task_spec(host_task)[1] is None
+                        else f"allowlist: {host_task_spec(host_task)[1]}"),
                     "served_model_fingerprints": served,
                     "probe": "docs/trial/probe-candidate-calendar.md",
                     "harness": "scripts/run_calendar_probe.py",

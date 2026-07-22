@@ -2211,11 +2211,14 @@ def real_run():
     try:
         phase = os.environ.get("CAL_PHASE", "").strip()
         budget = float(os.environ.get("CAL_BUDGET_CAP_USD", ""))
+        # 筛查模式只跑正臂、走裸 pipeline，**没有任何防御被施加**：此时若把 CAL_DEFENSE 的
+        # 默认值记进 runtime/artifact，就是第二次产出假标签（matrix 那次已犯过一回）。
+        defense_effective = None if screening else defense
         runtime = execution_runtime("probe", phase, prov, model, pin, n, budget,
                                     host_task=host_task,
                                     materials=_governed_materials_env(),
                                     max_runtime_minutes=_max_runtime_env(),
-                                    arms=arms_req, rung=rung, defense=defense)
+                                    arms=arms_req, rung=rung, defense=defense_effective)
         auth_meta = validate_execution_authorization(
             os.environ.get("CAL_EXECUTION_REQUEST_FILE", "").strip(),
             os.environ.get("CAL_APPROVAL_FILE", "").strip(), runtime)
@@ -2301,7 +2304,10 @@ def real_run():
     out = {"meta": {"generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
                     "provider": prov, "model": model, "rung": rung, "arms": arms_req,
-                    "screening": screening, "n_trials_per_arm": n, "defense": defense,
+                    "screening": screening, "n_trials_per_arm": n,
+                    "defense": defense_effective if not screening
+                               else "none (bare pipeline; positive-arm screening)",
+                    "defense_env_unused": defense if screening else None,
                     "interleaved": not screening, "seed": SEED,
                     "create_path_reachability": "GREEN",
                     "emission_recorder_installed": bool(getattr(bare, "_emission_recorder_installed", False)),

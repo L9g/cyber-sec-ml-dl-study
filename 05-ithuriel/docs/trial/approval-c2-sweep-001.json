@@ -1,0 +1,22 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "798e7fa3800975335230e3a7005fa0a43039587d7c7ef113e7993a6d7c907e4b",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 2.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "git:58b85ff,09ee6ea,b1a4a2e,a9c58da,b2d4246,9099393 — AI-agent 对抗性复核，结论记录在这些 commit message 中；按 ADR-0022 不构成人员独立性",
+  "valid_from": "2026-07-22T17:55:36Z",
+  "valid_until": "2026-07-22T19:25:36Z",
+  "notes": "stage-1 选型扫描：只回答『哪个部署×族能提供可重复点火的正对照』；不产生效应估计、不比较两族强弱、不满足 ADR-0020 C2。四格全 futile 则 global_stop_search，不得在预注册之外追加部署。"
+ }
+}

@@ -933,9 +933,19 @@ def _assert_strict_ancestor(repo_root, older, newer, label):
 
 
 def _governed_materials_env():
+    """受管辖材料清单。**没有安全的默认值**（partner review 2026-07-22 C6）。
+
+    此前缺省只有 runner；漏列 prereg 时，request 与 runtime 会**双双**用同一个不安全默认值、
+    因而彼此匹配，于是 prereg 根本不进三方哈希，改了它仍能跑出
+    `authorization_status=approved` 与 `analysis_eligibility=preregistered`。
+    安全关键集合不交给「忘了设就有默认」的环境变量，未设即拒。
+    """
     raw = os.environ.get("CAL_GOVERNED_MATERIALS", "").strip()
     mats = [m.strip() for m in raw.split(",") if m.strip()] if raw else []
-    return mats or ["scripts/run_calendar_probe.py"]
+    if not mats:
+        raise AuthorizationError(
+            "缺 CAL_GOVERNED_MATERIALS：受管辖材料必须显式声明（至少 runner 与本轮 prereg）")
+    return mats
 
 
 def _max_runtime_env():
@@ -1121,9 +1131,16 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
                 f"当前 {cur[:8]} / 批准时 {blob[:8]}）")
     if request.get("runtime") != expected_runtime:
         raise AuthorizationError("当前 runtime 与冻结 request 不匹配（authorization_status=lapsed）")
-    required_request = ("allowed_side_effects", "prohibited_side_effects", "roe_or_policy_ref")
+    required_request = ("allowed_side_effects", "prohibited_side_effects", "roe_or_policy_ref",
+                        "prereg_ref")
     if any(k not in request or request[k] in (None, "", []) for k in required_request):
-        raise AuthorizationError("request 未冻结 side-effect/RoE 边界")
+        raise AuthorizationError("request 未冻结 side-effect/RoE 边界或 prereg_ref")
+    # ⭐ C6：**request 自己声明的 prereg 必须进受管辖材料**，否则它不参与三方哈希，
+    # 批准后被改动也检不出来。这条不依赖调用方记得把 prereg 加进清单。
+    material_paths = [m.get("path") for m in request.get("materials", [])]
+    if request["prereg_ref"] not in material_paths:
+        raise AuthorizationError(
+            f"prereg_ref {request['prereg_ref']} 未列入受管辖材料 —— 它不会进三方哈希")
     fixed = {
         "decision": "approve",
         "authorization_mode": "self_authorized_solo",
@@ -1168,6 +1185,9 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
         "head_commit": head,
         "temporal_anchor": "local_git_only",   # git 只证顺序，不是可信时间戳
         "governed_materials": request.get("materials", []),
+        "prereg_path": request["prereg_ref"],
+        "prereg_sha256": next(m["sha256"] for m in request["materials"]
+                              if m["path"] == request["prereg_ref"]),
         "deadline_utc": deadline.isoformat(),
         "authorization_check_granularity": "trial_boundary",   # 不假装做到逐 tool-call 熔断
         "role_separation": approval["role_separation"],
@@ -2104,20 +2124,25 @@ def self_test():
         os.makedirs(os.path.join(repo, "scripts"))
         os.makedirs(os.path.join(repo, "docs", "trial"))
         mat_rel = "scripts/run_calendar_probe.py"
+        prereg_rel = "docs/trial/prereg-selftest.md"
         with open(os.path.join(repo, mat_rel), "w") as f:
             f.write("# frozen material\n")
+        with open(os.path.join(repo, prereg_rel), "w") as f:
+            f.write("# frozen prereg\n")
         for cmd in (["init", "-q"], ["config", "user.email", "t@example.com"],
                     ["config", "user.name", "t"], ["add", "-A"],
                     ["commit", "-qm", "material"]):
             subprocess.run(["git", *cmd], cwd=repo, check=True, capture_output=True)
 
         rt_auth = execution_runtime("matrix", "pilot", "openrouter", "model/test", "Mistral",
-                                    1, 1.25, max_runtime_minutes=30, repo_root=repo)
+                                    1, 1.25, max_runtime_minutes=30, repo_root=repo,
+                                    materials=[mat_rel, prereg_rel])
         req_obj = {
             "runtime": rt_auth,
             "allowed_side_effects": ["resettable AgentDojo calendar/email mock state"],
             "prohibited_side_effects": ["customer data", "real target network action"],
             "roe_or_policy_ref": "docs/adr/0022-solo-developer-two-hat-governance.md",
+            "prereg_ref": prereg_rel,
             "materials": rt_auth["materials"],
         }
         h_auth = _sha(req_obj)
@@ -2181,9 +2206,12 @@ def self_test():
         os.makedirs(os.path.join(sub, "docs", "trial"))
         with open(os.path.join(sub, mat_rel), "w") as f:
             f.write("# frozen material in subdir\n")
+        with open(os.path.join(sub, prereg_rel), "w") as f:
+            f.write("# frozen prereg in subdir\n")
         commit(["subproj"], "subproject material")
         rt_sub = execution_runtime("matrix", "pilot", "openrouter", "model/test", "Mistral",
-                                   1, 1.25, max_runtime_minutes=30, repo_root=sub)
+                                   1, 1.25, max_runtime_minutes=30, repo_root=sub,
+                                   materials=[mat_rel, prereg_rel])
         req_sub = dict(req_obj, runtime=rt_sub, materials=rt_sub["materials"])
         h_sub = _sha(req_sub)
         write(os.path.join(sub, req_rel), {"request": req_sub, "execution_request_hash": h_sub})
@@ -2234,6 +2262,46 @@ def self_test():
                         "execution_request_hash": h_auth})
         commit([req_rel], "stale hash")
         check("request 改动但沿用旧 hash fail closed", _raises(V))
+        # ── partner review C6：prereg 必须进三方哈希，且没有安全的默认材料清单 ──
+        _restage_n = [0]
+
+        def _stage(request_obj, approval_obj):
+            """Hat A 与 Hat B 各自一次**真实改动**的 commit，保持严格祖先关系。
+
+            必须真改内容：`git log -1 -- <path>` 只返回改动过该路径的提交，
+            空提交不会让 approval_commit 前进，会被祖先规则（正确地）拒绝。
+            """
+            _restage_n[0] += 1
+            req_v = dict(request_obj, _restage=_restage_n[0])
+            h = _sha(req_v)
+            write(req_abs, {"request": req_v, "execution_request_hash": h})
+            commit([req_rel], f"hat A restage {_restage_n[0]}")
+            write(apr_abs, {"approval": dict(approval_obj, execution_request_hash=h,
+                                             _restage=_restage_n[0])})
+            commit([apr_rel], f"hat B restage {_restage_n[0]}")
+
+        _stage(req_obj, approval)
+        check("恢复后通过（C6 用例基线）", V()["authorization_status"] == "approved")
+        check("auth_meta 记录 prereg 路径与哈希（供 artifact 核对）",
+              V()["prereg_path"] == prereg_rel
+              and V()["prereg_sha256"] == _file_sha(repo, prereg_rel))
+        _no_ref = {k: v for k, v in req_obj.items() if k != "prereg_ref"}
+        _stage(_no_ref, dict(approval, execution_request_hash=_sha(_no_ref)))
+        check("C6 request 无 prereg_ref：fail closed",
+              _raises(lambda: validate_execution_authorization(
+                  req_abs, apr_abs, rt_auth, now=fixed_now, repo_root=repo)))
+        _rt_runner_only = execution_runtime("matrix", "pilot", "openrouter", "model/test",
+                                            "Mistral", 1, 1.25, max_runtime_minutes=30,
+                                            repo_root=repo, materials=[mat_rel])
+        _omit = dict(req_obj, runtime=_rt_runner_only, materials=_rt_runner_only["materials"])
+        _stage(_omit, dict(approval, execution_request_hash=_sha(_omit)))
+        check("C6 prereg 声明了却未列入受管辖材料：fail closed（它不会进三方哈希）",
+              _raises(lambda: validate_execution_authorization(
+                  req_abs, apr_abs, _rt_runner_only, now=fixed_now, repo_root=repo)))
+        check("C6 未设 CAL_GOVERNED_MATERIALS 时拒绝，不回落到 runner-only 默认",
+              _raises(_governed_materials_env))
+        _stage(req_obj, approval)
+
         check("缺文件 fail closed（不得产 absent 新数据）",
               _raises(lambda: validate_execution_authorization("", "", rt_auth, now=fixed_now)))
 

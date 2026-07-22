@@ -2984,6 +2984,13 @@ def confirm_run():
         "note": ("stage-1 选型样本未并入。C2a 失败即实验无效；C2b 是对强保证结论的硬门槛、"
                  "对普通易感性实验只作范围限定。"),
     }
+    if phase == "pilot":
+        # pilot 冒烟不产生 C2 判定：机器固定 excluded，避免小样本 verdict 被误读成确认结论。
+        # 与 sweep_run / matrix_run 的 pilot 处理一致。
+        c2["diagnostic_verdict_before_exclusion"] = c2["verdict"]
+        c2["verdict"] = "excluded_pilot"
+        c2["note"] = ("ADR-0022 pilot：仅验仪器接线，**不构成 C2 判定**、不落 c2_pass、"
+                      "不并入任何确认性分析。" + c2["note"])
     out = {"meta": {"generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
                     "experiment": f"C2 confirmation ({family}) — 3 arms, fresh samples",

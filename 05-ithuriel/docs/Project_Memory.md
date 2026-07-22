@@ -506,3 +506,37 @@ experiment, which is the only design that can manufacture an action phase. That 
 constraint learned here: its benign task with a single legitimate write should also replace the current free-or-busy
 task, because a host task the model cannot reliably perform on its own leaves the utility axis on the floor regardless of
 what the attack does.
+
+## Solo-Developer Two-Hat Governance (2026-07-22)
+
+- ADR 0022 accepts a formal development-mode exception to the earlier second-person Execution Authorizer rule. For
+  internal T0–T2 work only, one person may act first as Probe Author/Developer and later as Execution Authorizer, provided
+  the roles are procedurally separated by a committed immutable execution request, hash-bound approval, explicit scope,
+  budget/RoE/side-effect limits, machine-enforced decision rules, append-only artifacts, and conflict disclosure.
+- This is role separation, not person independence. Such runs must record at least
+  `authorization_mode:self_authorized_solo`, `role_separation:procedural`, `person_independence:none`, and
+  `independence_verification:not_applicable`; the self-authorized run remains `assurance_level:none`. `unverified` is
+  reserved for a real second person whose identity, relationship, or qualification has not been verified. Any later
+  independent assurance must be recorded as a separate review artifact with its own scope.
+- Smoke tests, pilots, and manipulation checks are executions, not a pre-governance gap. A pilot needs its own frozen and
+  approved request, hard attempt/cost/stop bounds, and `analysis_eligibility:excluded`; a main run needs a new hash and
+  approval. A failed pilot returns to authoring, and no task/oracle change may continue under the old request.
+- Record adversarial quality review separately as `adversarial_review:none|ai_agent|peer` plus a reference. It can improve
+  technical quality but does not upgrade `person_independence`.
+- The calendar runner must fail closed before paid/model/tool execution unless an approval artifact is present, current,
+  hash-matched, and consistent with the target/provider/budget/phase. Run artifacts record `authorization_status` and
+  `execution_request_hash`. `approved` describes actions admitted under a valid approval; `lapsed` marks actions after an
+  approval expired or its request changed; `absent` marks legacy execution with no approval. Later expiry does not
+  retroactively downgrade data produced while approval was valid, and governance corrections never overwrite raw results.
+- The 2026-07-22 calendar task-shape 2×2 predates ADR-0022 and had neither a frozen execution-request hash nor Hat B
+  approval; its task text also changed after a one-sample pilot. Do not back-sign it or call it retroactively noncompliant.
+  Preserve it as legacy internal discovery evidence and add a metadata-only sidecar recording
+  `authorization_mode:none (pre-ADR-0022)`, `authorization_status:absent`, `execution_request_hash:none`, and
+  `person_independence:none`. Its technical validity remains a separate question from governance attribution.
+- A solo developer cannot stand in for the Trial User. Self-testing does not satisfy ADR-0020 C1–C4 or prove the
+  Story-to-Probe product/job hypothesis. Technical oracle discrimination may be recorded separately without operator
+  attribution.
+- T3, customer data/accounts/systems, network actions against a real target, persistent external side effects, and external/customer/compliance
+  assurance still require a second qualified person plus the existing contract, target-scoped RoE, PEP, credential,
+  recovery, and claim-boundary controls. If no second person is available, remain blocked or use an explicitly bounded
+  synthetic/mock surrogate; do not manufacture independence with a second account or an AI reviewer.

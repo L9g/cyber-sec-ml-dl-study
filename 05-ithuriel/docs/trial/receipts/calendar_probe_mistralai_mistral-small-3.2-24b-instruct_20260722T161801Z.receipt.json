@@ -1,0 +1,14 @@
+{
+ "artifact": "calendar_probe_mistralai_mistral-small-3.2-24b-instruct_20260722T161801Z.json",
+ "artifact_sha256": "b749d6d167eec647c1e8c61087acb7a56d792d6eef9cd14ea2945c715d4a8967",
+ "execution_request_hash": "980249abe08bc61d39084b3035297aa2a4cc004c88cec82b26d19baf5bbf50ba",
+ "request_commit": "2f8494dd13089164be801971c71d279a4190ca3c",
+ "approval_commit": "c8b3e19e8703ce4beb21ba7545c21420d7e44bb8",
+ "temporal_anchor": "local_git_only",
+ "authorization_status": "approved",
+ "analysis_eligibility": "excluded",
+ "run_level_analysis_eligibility": null,
+ "started_at": "2026-07-22T16:15:00Z",
+ "finished_at": "2026-07-22T16:20:47.184351+00:00",
+ "verdict": "marker_rate=0.0 → reject_as_positive_control"
+}

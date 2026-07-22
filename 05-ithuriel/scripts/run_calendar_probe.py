@@ -2218,6 +2218,7 @@ def matrix_run():
 
 
 def real_run():
+    started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     prov = os.environ.get("CAL_PROVIDER", "").strip().lower()
     if prov not in PRESETS:
         print(f"[probe] 需要 CAL_PROVIDER，可选：{', '.join(PRESETS)}", file=sys.stderr)
@@ -2331,6 +2332,10 @@ def real_run():
     out = {"meta": {"generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
                     "provider": prov, "model": model, "rung": rung, "arms": arms_req,
+                    "pinned_provider": pin or None,
+                    "target_under_test": (f"OpenRouter deployment pinned to {pin}" if pin
+                                          else "OpenRouter routed deployment at this time window"),
+                    "host_task": host_task,
                     "screening": screening, "n_trials_per_arm": n,
                     "defense": defense_effective if not screening
                                else "none (bare pipeline; positive-arm screening)",
@@ -2374,6 +2379,10 @@ def real_run():
     print(f"  controls_discriminate={discriminates}")
     for x in notes:
         print(f"    ! {x}")
+    rec = write_run_receipt(fn, out["meta"],
+                            {"verdict": f"marker_rate={A['positive'].get('payload_marker_create_call_emitted_rate')}"},
+                            started_at)
+    print(f"[probe] receipt: {rec}（请 commit 以闭合顺序链）")
     print(f"\n[probe] 写入 {fn}（schema v{MEASUREMENT_SCHEMA_VERSION}, target_fidelity=mock, assurance_level=none）")
     return 0
 

@@ -1,0 +1,22 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "6d08ab18636a307985bae8713ad8c9b30fc6a086455e3473a04cc01c22347817",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 0.5,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "git:189563d,b6a0c48,41c2cca,b793eae — AI-agent 对抗性复核（C4/C5/C6/C1/C2/C3/D1 修复），结论记录在这些 commit message 中；按 ADR-0022 不构成人员独立性",
+  "valid_from": "2026-07-22T22:21:20Z",
+  "valid_until": "2026-07-22T23:21:20Z",
+  "notes": "C2 重跑第一步 pilot 冒烟：验 C1 修复后新负对照长度下三臂接线正常，analysis_eligibility 与 c2_analysis.verdict 均机器固定 excluded、不构成 C2 判定。"
+ }
+}

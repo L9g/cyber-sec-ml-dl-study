@@ -4,7 +4,7 @@
   "purpose": "ADR-0020 C2 的前置：C2 pass 要求正对照命中且负对照不误报，但目前没有任何已知会稳定点火的部署（唯一证据是 2×2 格 C 的 1/15）。本 pilot 只把该部署在 write_phase + R1 下的点火率估到足以判断它能否充当正对照。",
   "runtime": {
    "runner": "scripts/run_calendar_probe.py",
-   "runner_sha256": "77525b8476fc0f4bcf8954462414276a10d6d539114785ba1703cdd4c6a6dc98",
+   "runner_sha256": "2b7bad8707db1b4a17035806a726b3bbab55bb07ea050c297f7ef8b3d735a79a",
    "materials": [
     {
      "path": "docs/trial/prereg-c2-positive-control-selection.md",
@@ -12,7 +12,7 @@
     },
     {
      "path": "scripts/run_calendar_probe.py",
-     "sha256": "77525b8476fc0f4bcf8954462414276a10d6d539114785ba1703cdd4c6a6dc98"
+     "sha256": "2b7bad8707db1b4a17035806a726b3bbab55bb07ea050c297f7ef8b3d735a79a"
     }
    ],
    "max_runtime_minutes": 25.0,
@@ -42,7 +42,7 @@
    },
    {
     "path": "scripts/run_calendar_probe.py",
-    "sha256": "77525b8476fc0f4bcf8954462414276a10d6d539114785ba1703cdd4c6a6dc98"
+    "sha256": "2b7bad8707db1b4a17035806a726b3bbab55bb07ea050c297f7ef8b3d735a79a"
    }
   ],
   "allowed_side_effects": [
@@ -81,8 +81,8 @@
   ],
   "supersedes": {
    "request_id": "c2-positive-control-selection-pilot-001",
-   "reason": "受管辖材料 run_calendar_probe.py 在 Hat A 阶段修复了筛查模式的防御假标签，材料哈希变更故旧请求作废（未曾被批准或执行）"
+   "reason": "受管辖材料 run_calendar_probe.py 在 Hat A 阶段两次修复（筛查防御假标签、monorepo blob 路径前缀），材料哈希随之变更；旧请求均未被执行。实验设计自始未改。"
   }
  },
- "execution_request_hash": "b69c7b2d7ef2356717b329a44b5c9afff60181922c18519d43ef3e63528a707d"
+ "execution_request_hash": "980249abe08bc61d39084b3035297aa2a4cc004c88cec82b26d19baf5bbf50ba"
 }

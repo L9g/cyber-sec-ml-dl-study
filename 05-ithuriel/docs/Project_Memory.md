@@ -528,6 +528,12 @@ what the attack does.
   `execution_request_hash`. `approved` describes actions admitted under a valid approval; `lapsed` marks actions after an
   approval expired or its request changed; `absent` marks legacy execution with no approval. Later expiry does not
   retroactively downgrade data produced while approval was valid, and governance corrections never overwrite raw results.
+- The minimum calendar enforcement seam is now implemented: `CAL_AUTHORIZATION_FILE` binds a canonical request hash to
+  the code commit/runner SHA-256, exact runtime, phase, target, provider/deployment, trial ceiling, and
+  `CAL_BUDGET_CAP_USD`; absent, expired, tampered, or
+  drifting approval exits before reachability tools or provider calls. Artifacts persist the approval provenance. Cost
+  control is currently an approved cap declaration plus deterministic maximum trials, not live USD usage metering; report
+  that limitation rather than calling it a monetary circuit breaker.
 - The 2026-07-22 calendar task-shape 2×2 predates ADR-0022 and had neither a frozen execution-request hash nor Hat B
   approval; its task text also changed after a one-sample pilot. Do not back-sign it or call it retroactively noncompliant.
   Preserve it as legacy internal discovery evidence and add a metadata-only sidecar recording

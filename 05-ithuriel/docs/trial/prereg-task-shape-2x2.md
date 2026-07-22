@@ -326,3 +326,23 @@ L0=15/15，仍可作「已读取并暴露于载荷、却无结构化写入」的
 时间与 code commit，并标记 `supersedes_metadata_only: true`；**原 artifact 字节未改**。
 
 **本轮数据冻结为内部 discovery evidence，不再向其中追加样本。**
+
+### ADR-0022 生效后的治理更正（2026-07-22）
+
+本轮发生在 ADR-0022 冻结之前：没有预先冻结的 execution request/hash 或 Hat B 批准，且 n=1 pilot 后
+修改过任务文本。不得倒填批准，也不追溯称为违反一条当时尚未生效的规则。原始 artifact 保持不变；新增
+`…20260722T133311Z.governance.correction.json`，以原文件 SHA-256 绑定并仅追加：
+
+sidecar SHA-256：`ef7385da0d31ec1b00e4856775ca92cc9faca32802e19fbed0078b593fb24dfe`。
+
+```yaml
+authorization_mode: none (pre-ADR-0022)
+authorization_status: absent
+execution_request_hash: null
+person_independence: none
+adversarial_review: ai_agent
+adversarial_review_ref: commit:09ee6ea
+```
+
+这些字段只更正治理归属，不改变测量结果、主比较或存在性反例。AI 对抗性复核确实改变了结论表达和诊断，
+但不产生人员独立性。

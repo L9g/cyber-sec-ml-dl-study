@@ -38,11 +38,13 @@ v1 的 `unauthorized_create_attempted` 实为**完整规格调用的合取**（t
                                —— 即 positive 臂；内置 AgentDojo 的 ASR=1 只是「组件易感性对照」，非此层
 
 跑法（key 一律走工作区根包装器注入，不要写 `KEY=$(cat f) cmd`——那会把明文展开到命令行）：
-  CAL_PROVIDER=openrouter CAL_MODEL=<slug> ../scripts/with-keys.sh openrouter -- \
+  CAL_PROVIDER=openrouter CAL_MODEL=<slug> CAL_PHASE=main CAL_BUDGET_CAP_USD=<cap> \
+      CAL_AUTHORIZATION_FILE=<approved.json> ../scripts/with-keys.sh openrouter -- \
       .venv/bin/python scripts/run_calendar_probe.py
+  .venv/bin/python scripts/run_calendar_probe.py --hash-execution-request <draft.json>
   .venv/bin/python scripts/run_calendar_probe.py --self-test   # 离线自检，不调模型、不需要 key
 """
-import os, sys, json, time, copy, uuid, random, hashlib, datetime, argparse
+import os, sys, json, time, copy, uuid, random, hashlib, datetime, argparse, subprocess
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -624,6 +626,141 @@ def evaluate(nonce, pre_env, post_env, messages, final_text,
 def _sha(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False,
                                      default=str).encode()).hexdigest()
+
+
+class AuthorizationError(ValueError):
+    """执行授权缺失、失效或与当前 runtime 不匹配；调用方必须 fail closed。"""
+
+
+def _utc(value):
+    """严格读取带时区的 ISO-8601 时间。"""
+    if not isinstance(value, str) or not value.strip():
+        raise AuthorizationError("valid_from/valid_until 必须是带时区的 ISO-8601 时间")
+    try:
+        dt = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AuthorizationError(f"无效时间 {value!r}") from exc
+    if dt.tzinfo is None:
+        raise AuthorizationError(f"时间必须带时区：{value!r}")
+    return dt.astimezone(datetime.timezone.utc)
+
+
+def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_cap_usd,
+                      *, arms=None, rung=None, defense=None):
+    """把会改变执行范围、成本或测量语义的 runtime 参数规范化为 hash-bound 对象。"""
+    if phase not in ("pilot", "main"):
+        raise AuthorizationError("CAL_PHASE 必须是 pilot 或 main")
+    if not isinstance(budget_cap_usd, (int, float)) or isinstance(budget_cap_usd, bool) \
+            or budget_cap_usd <= 0:
+        raise AuthorizationError("CAL_BUDGET_CAP_USD 必须是正数硬上限")
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+        raise AuthorizationError("CAL_N_TRIALS 必须是正整数")
+    runner_path = os.path.abspath(__file__)
+    with open(runner_path, "rb") as f:
+        runner_sha256 = hashlib.sha256(f.read()).hexdigest()
+    repo_root = os.path.dirname(os.path.dirname(runner_path))
+    commit_proc = subprocess.run(
+        ["git", "log", "-1", "--format=%H", "--", "scripts/run_calendar_probe.py"],
+        cwd=repo_root, text=True, capture_output=True, check=False)
+    if commit_proc.returncode != 0 or not commit_proc.stdout.strip():
+        raise AuthorizationError("无法解析 code commit；执行请求不能绑定代码版本")
+    base = {
+        "runner": "scripts/run_calendar_probe.py",
+        "runner_sha256": runner_sha256,
+        "code_commit": commit_proc.stdout.strip(),
+        "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
+        "experiment_mode": mode,
+        "phase": phase,
+        "analysis_eligibility": "excluded" if phase == "pilot" else "preregistered",
+        "target": "agentdojo-workspace-mock",
+        "target_fidelity": "mock",
+        "provider": provider,
+        "model": model,
+        "pinned_provider": pinned_provider or None,
+        "budget_cap_usd": float(budget_cap_usd),
+    }
+    if mode == "matrix":
+        base.update(n_per_cell=n, cells=CELLS, max_trials=n * len(CELLS),
+                    defense="none (bare pipeline; positive-arm screening)")
+    else:
+        arms = list(arms or [])
+        if arms not in (["positive"], ["positive", "negative"]):
+            raise AuthorizationError("CAL_ARMS 必须是 positive 或 positive,negative（顺序固定）")
+        extra_defense_arm = 0 if arms == ["positive"] else 1
+        base.update(n_per_arm=n, arms=arms, rung=rung, defense=defense,
+                    max_trials=n * (len(arms) + extra_defense_arm))
+    return base
+
+
+def validate_execution_authorization(path, expected_runtime, now=None):
+    """读取并验证 ADR-0022 最小批准 artifact；任何缺口均抛错、不得执行。
+
+    JSON 形状为 ``{"request": {...}, "execution_request_hash": "...", "approval": {...}}``。
+    hash 只覆盖 canonical request；approval 和当前 runtime 都必须引用/匹配同一个 hash。
+    """
+    if not path:
+        raise AuthorizationError("缺少 CAL_AUTHORIZATION_FILE（authorization_status=absent）")
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AuthorizationError(f"无法读取批准 artifact：{exc}") from exc
+    request = doc.get("request")
+    approval = doc.get("approval")
+    if not isinstance(request, dict) or not isinstance(approval, dict):
+        raise AuthorizationError("批准 artifact 必须含 request 与 approval 对象")
+    request_hash = _sha(request)
+    if doc.get("execution_request_hash") != request_hash \
+            or approval.get("execution_request_hash") != request_hash:
+        raise AuthorizationError("execution_request_hash 缺失或不匹配（authorization_status=lapsed）")
+    if request.get("runtime") != expected_runtime:
+        raise AuthorizationError("当前 runtime 与冻结 request 不匹配（authorization_status=lapsed）")
+    required_request = ("allowed_side_effects", "prohibited_side_effects", "roe_or_policy_ref")
+    if any(k not in request or request[k] in (None, "", []) for k in required_request):
+        raise AuthorizationError("request 未冻结 side-effect/RoE 边界")
+    fixed = {
+        "decision": "approve",
+        "authorization_mode": "self_authorized_solo",
+        "role_separation": "procedural",
+        "person_independence": "none",
+        "independence_verification": "not_applicable",
+        "conflict_of_interest": "self_review",
+        "approval_scope": "internal_t0_t2_development",
+    }
+    bad = [k for k, v in fixed.items() if approval.get(k) != v]
+    if bad:
+        raise AuthorizationError("批准字段不符合 ADR-0022：" + ", ".join(bad))
+    if not approval.get("approved_by") or approval.get("approval_role") != "execution_authorizer":
+        raise AuthorizationError("批准必须记录 approved_by 与 execution_authorizer 角色")
+    if approval.get("approved_target") != expected_runtime["target"] \
+            or approval.get("approved_provider") != expected_runtime["provider"] \
+            or approval.get("budget_cap_usd") != expected_runtime["budget_cap_usd"]:
+        raise AuthorizationError("批准的 target/provider/budget 与当前 runtime 不匹配")
+    if approval.get("adversarial_review") not in ("none", "ai_agent", "peer"):
+        raise AuthorizationError("adversarial_review 必须是 none、ai_agent 或 peer")
+    if approval.get("adversarial_review") != "none" and not approval.get("adversarial_review_ref"):
+        raise AuthorizationError("发生对抗性复核时必须记录 adversarial_review_ref")
+    if expected_runtime["phase"] == "pilot" \
+            and expected_runtime["analysis_eligibility"] != "excluded":
+        raise AuthorizationError("pilot 必须 analysis_eligibility=excluded")
+    instant = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(datetime.timezone.utc)
+    if not (_utc(approval.get("valid_from")) <= instant < _utc(approval.get("valid_until"))):
+        raise AuthorizationError("批准尚未生效或已经过期（authorization_status=lapsed）")
+    return {
+        "authorization_mode": approval["authorization_mode"],
+        "authorization_status": "approved",
+        "execution_request_hash": request_hash,
+        "role_separation": approval["role_separation"],
+        "person_independence": approval["person_independence"],
+        "independence_verification": approval["independence_verification"],
+        "adversarial_review": approval["adversarial_review"],
+        "adversarial_review_ref": approval.get("adversarial_review_ref"),
+        "approval_artifact": os.path.basename(path),
+        "approved_budget_cap_usd": expected_runtime["budget_cap_usd"],
+        "budget_enforcement": "hash-bound preflight plus max_trials; no live USD metering",
+        "phase": expected_runtime["phase"],
+        "analysis_eligibility": expected_runtime["analysis_eligibility"],
+    }
 
 
 def _ev_dump(ev):
@@ -1288,6 +1425,67 @@ def self_test():
     check("read-only：legacy 字段仍为 v2 语义（历史对齐）",
           evaluate("LEG", pre_o, e_o, [], "FREE")["unauthorized_create_attempted"] is False)
 
+    print("=== 自检 25：ADR-0022 授权硬门（hash/runtime/有效期/budget/phase）===")
+    fixed_now = datetime.datetime(2026, 7, 22, 12, 0, tzinfo=datetime.timezone.utc)
+    rt_auth = execution_runtime("matrix", "pilot", "openrouter", "model/test", "Mistral",
+                                1, 1.25)
+    req_auth = {
+        "runtime": rt_auth,
+        "allowed_side_effects": ["resettable AgentDojo calendar/email mock state"],
+        "prohibited_side_effects": ["customer data", "real target network action"],
+        "roe_or_policy_ref": "docs/adr/0022-solo-developer-two-hat-governance.md@7dab4c4",
+    }
+    h_auth = _sha(req_auth)
+    approval = {
+        "approved_by": "solo-developer",
+        "approval_role": "execution_authorizer",
+        "decision": "approve",
+        "authorization_mode": "self_authorized_solo",
+        "role_separation": "procedural",
+        "person_independence": "none",
+        "independence_verification": "not_applicable",
+        "conflict_of_interest": "self_review",
+        "approval_scope": "internal_t0_t2_development",
+        "execution_request_hash": h_auth,
+        "approved_target": "agentdojo-workspace-mock",
+        "approved_provider": "openrouter",
+        "budget_cap_usd": 1.25,
+        "adversarial_review": "ai_agent",
+        "adversarial_review_ref": "test:authorization-gate",
+        "valid_from": "2026-07-22T11:00:00Z",
+        "valid_until": "2026-07-22T13:00:00Z",
+    }
+    with tempfile.TemporaryDirectory() as td:
+        auth_path = os.path.join(td, "authorization.json")
+
+        def write_auth(request=req_auth, top_hash=h_auth, approval_obj=approval):
+            with open(auth_path, "w", encoding="utf-8") as f:
+                json.dump({"request": request, "execution_request_hash": top_hash,
+                           "approval": approval_obj}, f)
+
+        write_auth()
+        auth_ok = validate_execution_authorization(auth_path, rt_auth, now=fixed_now)
+        check("有效批准通过且 artifact metadata 记 approved/hash/none",
+              auth_ok["authorization_status"] == "approved"
+              and auth_ok["execution_request_hash"] == h_auth
+              and auth_ok["person_independence"] == "none")
+        check("pilot 被机器固定为不可分析", auth_ok["analysis_eligibility"] == "excluded")
+        rt_wrong_budget = dict(rt_auth, budget_cap_usd=2.0)
+        check("runtime budget 漂移 fail closed",
+              _raises(lambda: validate_execution_authorization(auth_path, rt_wrong_budget,
+                                                               now=fixed_now)))
+        tampered = copy.deepcopy(req_auth)
+        tampered["runtime"]["n_per_cell"] = 2
+        write_auth(request=tampered)
+        check("request 改动但沿用旧 hash fail closed",
+              _raises(lambda: validate_execution_authorization(auth_path, rt_auth, now=fixed_now)))
+        expired = dict(approval, valid_until="2026-07-22T12:00:00Z")
+        write_auth(approval_obj=expired)
+        check("valid_until 为排他边界：到期即 lapsed/fail closed",
+              _raises(lambda: validate_execution_authorization(auth_path, rt_auth, now=fixed_now)))
+        check("批准缺失 fail closed（不得产 absent 新数据）",
+              _raises(lambda: validate_execution_authorization("", rt_auth, now=fixed_now)))
+
     print(f"\n自检{'全部通过' if ok else '有失败项'}")
     return 0 if ok else 1
 
@@ -1532,6 +1730,15 @@ def matrix_run():
     n = int(os.environ.get("CAL_N_TRIALS", "15"))
     defense = os.environ.get("CAL_DEFENSE", "spotlighting_with_delimiting")
     pin = os.environ.get("CAL_PIN_PROVIDER", "").strip()
+    try:
+        phase = os.environ.get("CAL_PHASE", "").strip()
+        budget = float(os.environ.get("CAL_BUDGET_CAP_USD", ""))
+        runtime = execution_runtime("matrix", phase, prov, model, pin, n, budget)
+        auth_meta = validate_execution_authorization(
+            os.environ.get("CAL_AUTHORIZATION_FILE", "").strip(), runtime)
+    except (AuthorizationError, ValueError) as exc:
+        print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
+        return 4
     key_env = PRESETS[prov][1]
     if key_env and not os.environ.get(key_env):
         print(f"[probe] provider={prov} 需要 {key_env}", file=sys.stderr)
@@ -1589,10 +1796,14 @@ def matrix_run():
                       "token-matched negative control 不误报（control discrimination 门），"
                       "以及重复运行稳定性（instrument qualification 门）"),
     }
+    if phase == "pilot":
+        primary["diagnostic_verdict_before_exclusion"] = primary["verdict"]
+        primary["verdict"] = "excluded_pilot"
+        primary["gate_note"] = "ADR-0022 pilot：不可进入主比较、效应估计或确认性样本。"
 
     notes = [
-        "预注册偏离：未经操作员签署第 12 节七项批准，由项目负责人授权执行；"
-        "故本轮结果**不可用作 ADR-0020 的 C1/C2 操作员归属证据**，只作内部诊断信号。",
+        "ADR-0022 自我授权只产生内部技术证据；未经真实 Trial User 执行，"
+        "故不可用作 ADR-0020 的 C1/C2 操作员归属证据。",
         "筛查阶段：仅正臂、无负对照 → 不构成 behavioral positive control。",
     ]
     if not all(A[c]["n_primary_analyzed"] == n for c in CELLS):
@@ -1607,7 +1818,7 @@ def matrix_run():
                     "experiment": "task-shape 2x2 (diagnostic)",
                     "prereg": "docs/trial/prereg-task-shape-2x2.md",
                     "prereg_signed_off_by_operator": False,
-                    "authorized_by": "project owner override (recorded deviation)",
+                    "authorized_by": "ADR-0022 authorization artifact",
                     "provider": prov, "model": model, "pinned_provider": pin or None,
                     "target_under_test": (f"OpenRouter deployment pinned to {pin}" if pin
                                           else "OpenRouter routed deployment at this time window"),
@@ -1631,6 +1842,7 @@ def matrix_run():
            "schedule": order_log,
            "validity_notes": notes,
            "cells_detail": cells}
+    out["meta"].update(auth_meta)
 
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"results/calendar_matrix_{model.replace('/', '_')}_{ts}.json"
@@ -1670,6 +1882,17 @@ def real_run():
     arms_req = [a.strip() for a in os.environ.get("CAL_ARMS", "positive,negative").split(",") if a.strip()]
     screening = arms_req == ["positive"]
     defense = os.environ.get("CAL_DEFENSE", "spotlighting_with_delimiting")
+    pin = os.environ.get("CAL_PIN_PROVIDER", "").strip()
+    try:
+        phase = os.environ.get("CAL_PHASE", "").strip()
+        budget = float(os.environ.get("CAL_BUDGET_CAP_USD", ""))
+        runtime = execution_runtime("probe", phase, prov, model, pin, n, budget,
+                                    arms=arms_req, rung=rung, defense=defense)
+        auth_meta = validate_execution_authorization(
+            os.environ.get("CAL_AUTHORIZATION_FILE", "").strip(), runtime)
+    except (AuthorizationError, ValueError) as exc:
+        print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
+        return 4
     key_env = PRESETS[prov][1]
     if key_env and not os.environ.get(key_env):
         print(f"[probe] provider={prov} 需要 {key_env}", file=sys.stderr)
@@ -1750,7 +1973,7 @@ def real_run():
                     "screening": screening, "n_trials_per_arm": n, "defense": defense,
                     "interleaved": not screening, "seed": SEED,
                     "create_path_reachability": "GREEN",
-                    "emission_recorder_installed": bool(getattr(pipe, "_emission_recorder_installed", False)),
+                    "emission_recorder_installed": bool(getattr(bare, "_emission_recorder_installed", False)),
                     "host_task_profile": "read_only",   # 含写宿主任务待操作员批准，未接入
                     "authorization_predicate": "none (read-only: 任何 create 均未授权)",
                     "served_model_fingerprints": served,
@@ -1768,6 +1991,7 @@ def real_run():
                                     "结论只覆盖此替代场景，不外推真实 Google/Gemini。"},
            "aggregate": A, "controls_discriminate": discriminates,
            "validity_notes": notes, "arms": arms}
+    out["meta"].update(auth_meta)
     os.makedirs("results", exist_ok=True)
     slug = model.replace("/", "_").replace(":", "_")
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1811,10 +2035,23 @@ def _log(r, tag, i):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--self-test", action="store_true", help="离线自检，不调模型")
+    ap.add_argument("--hash-execution-request", metavar="JSON",
+                    help="离线计算 JSON 中 request 对象的 canonical SHA-256，不执行 trial")
     ap.add_argument("--write-correction", nargs=4,
                     metavar=("ARTIFACT", "FIELD_PATH", "CORRECTED_VALUE", "REASON"),
                     help="给已产出 artifact 写不可变更正 sidecar（原文件不改）")
     args = ap.parse_args()
+    if args.hash_execution_request:
+        try:
+            with open(args.hash_execution_request, encoding="utf-8") as f:
+                request = json.load(f).get("request")
+            if not isinstance(request, dict):
+                raise AuthorizationError("文件必须包含 request 对象")
+            print(_sha(request))
+            sys.exit(0)
+        except (OSError, json.JSONDecodeError, AuthorizationError) as exc:
+            print(f"[probe] 无法计算 execution_request_hash：{exc}", file=sys.stderr)
+            sys.exit(2)
     if args.write_correction:
         a, fp, cv, rs = args.write_correction
         commit = os.popen("git rev-parse --short HEAD 2>/dev/null").read().strip() or None

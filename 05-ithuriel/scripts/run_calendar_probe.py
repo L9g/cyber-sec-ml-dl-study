@@ -662,9 +662,16 @@ def _git(repo_root, *args, binary=False):
     return p.stdout
 
 
+def _git_prefix(repo_root):
+    """cwd 相对**仓库根**的前缀。monorepo 里 05-ithuriel/ 就是这个前缀——
+    `git show <commit>:<path>` 的路径必须相对仓库根，不能相对 cwd。"""
+    return _git(repo_root, "rev-parse", "--show-prefix").strip()
+
+
 def _blob_sha_at(repo_root, commit, path):
-    """`git show <commit>:<path>` 的真实字节 SHA-256。"""
-    return hashlib.sha256(_git(repo_root, "show", f"{commit}:{path}", binary=True)).hexdigest()
+    """`git show <commit>:<path>` 的真实字节 SHA-256（路径自动补仓库根前缀）。"""
+    full = f"{_git_prefix(repo_root)}{path}"
+    return hashlib.sha256(_git(repo_root, "show", f"{commit}:{full}", binary=True)).hexdigest()
 
 
 def _file_sha(repo_root, path):
@@ -1701,6 +1708,26 @@ def self_test():
             f.write("# frozen material\n")
         commit([mat_rel], "restore material")
         check("材料还原后恢复通过", V()["authorization_status"] == "approved")
+        # monorepo 前缀回归：repo_root 是仓库根的子目录时，git show 的路径必须补前缀
+        sub = os.path.join(repo, "subproj")
+        os.makedirs(os.path.join(sub, "scripts"))
+        os.makedirs(os.path.join(sub, "docs", "trial"))
+        with open(os.path.join(sub, mat_rel), "w") as f:
+            f.write("# frozen material in subdir\n")
+        commit(["subproj"], "subproject material")
+        rt_sub = execution_runtime("matrix", "pilot", "openrouter", "model/test", "Mistral",
+                                   1, 1.25, max_runtime_minutes=30, repo_root=sub)
+        req_sub = dict(req_obj, runtime=rt_sub, materials=rt_sub["materials"])
+        h_sub = _sha(req_sub)
+        write(os.path.join(sub, req_rel), {"request": req_sub, "execution_request_hash": h_sub})
+        commit(["subproj"], "hat A in subdir")
+        write(os.path.join(sub, apr_rel),
+              {"approval": dict(approval, execution_request_hash=h_sub)})
+        commit(["subproj"], "hat B in subdir")
+        check("monorepo 子目录：blob 哈希能取到（git show 补仓库根前缀）",
+              validate_execution_authorization(
+                  os.path.join(sub, req_rel), os.path.join(sub, apr_rel), rt_sub,
+                  now=fixed_now, repo_root=sub)["authorization_status"] == "approved")
 
         # 同一个 commit 同时提交 request 与 approval → 证不出角色切换
         repo2 = os.path.join(td, "repo2")

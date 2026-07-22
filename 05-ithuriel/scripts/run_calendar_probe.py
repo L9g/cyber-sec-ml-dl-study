@@ -785,8 +785,8 @@ def deadline_exceeded(deadline_iso, now=None):
 
 
 def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_cap_usd,
-                      *, arms=None, rung=None, defense=None, materials=None,
-                      max_runtime_minutes=None, repo_root=None):
+                      *, arms=None, rung=None, defense=None, host_task="read_only",
+                      materials=None, max_runtime_minutes=None, repo_root=None):
     """把会改变执行范围、成本或测量语义的 runtime 参数规范化为 hash-bound 对象。"""
     if phase not in ("pilot", "main"):
         raise AuthorizationError("CAL_PHASE 必须是 pilot 或 main")
@@ -830,6 +830,7 @@ def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_c
             raise AuthorizationError("CAL_ARMS 必须是 positive 或 positive,negative（顺序固定）")
         extra_defense_arm = 0 if arms == ["positive"] else 1
         base.update(n_per_arm=n, arms=arms, rung=rung, defense=defense,
+                    host_task=host_task,
                     max_trials=n * (len(arms) + extra_defense_arm))
     return base
 
@@ -1598,6 +1599,15 @@ def self_test():
           " if " not in f" {ut_w.lower()} " and "free" not in ut_w.lower())
     check("含写任务仍先读日历（保住注入曝光面 L0）", "Check my calendar" in ut_w)
     check("只读任务文本未被改动", ut_r == USER_TASK)
+    _rt_ho = execution_runtime("probe", "pilot", "openrouter", "m", "Mistral", 5, 1.0,
+                               arms=["positive"], rung=1, defense=None, host_task="write_phase",
+                               max_runtime_minutes=10)
+    check("host_task 进入 hash-bound runtime（改了即批准失效）",
+          _rt_ho["host_task"] == "write_phase")
+    check("host_task 不同 → runtime 不同",
+          execution_runtime("probe", "pilot", "openrouter", "m", "Mistral", 5, 1.0,
+                            arms=["positive"], rung=1, defense=None, host_task="read_only",
+                            max_runtime_minutes=10) != _rt_ho)
     _blocks = []
     for i in range(3):
         b = list(CELLS)
@@ -2195,12 +2205,14 @@ def real_run():
     # 注记——共享负对照不作长度受控对照，per-rung token-matched 负对照留第二阶段）
     arms_req = [a.strip() for a in os.environ.get("CAL_ARMS", "positive,negative").split(",") if a.strip()]
     screening = arms_req == ["positive"]
+    host_task = os.environ.get("CAL_HOST_TASK", "read_only").strip() or "read_only"
     defense = os.environ.get("CAL_DEFENSE", "spotlighting_with_delimiting")
     pin = os.environ.get("CAL_PIN_PROVIDER", "").strip()
     try:
         phase = os.environ.get("CAL_PHASE", "").strip()
         budget = float(os.environ.get("CAL_BUDGET_CAP_USD", ""))
         runtime = execution_runtime("probe", phase, prov, model, pin, n, budget,
+                                    host_task=host_task,
                                     materials=_governed_materials_env(),
                                     max_runtime_minutes=_max_runtime_env(),
                                     arms=arms_req, rung=rung, defense=defense)
@@ -2231,7 +2243,8 @@ def real_run():
 
     if screening:
         for i in range(n):
-            arms["positive"].append(_log(one_trial(bare, True, "positive", rung), "pos", i))
+            arms["positive"].append(
+                _log(one_trial(bare, True, "positive", rung, host_task), "pos", i))
     else:
         # 成对随机交错：每对内 coin flip 谁先，抵消短时 provider 漂移的系统性偏置
         plan = []
@@ -2241,7 +2254,8 @@ def real_run():
             plan.extend(pair)
         for arm, mal in plan:
             arms.setdefault(arm, [])
-            arms[arm].append(_log(one_trial(bare, mal, arm, rung), arm[:3], len(arms[arm])))
+            arms[arm].append(_log(one_trial(bare, mal, arm, rung, host_task),
+                                  arm[:3], len(arms[arm])))
 
     A = {k: agg(v) for k, v in arms.items()}
     notes = []

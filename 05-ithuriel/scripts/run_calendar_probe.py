@@ -742,6 +742,41 @@ def write_run_receipt(artifact_path, meta, primary, started_at, out_dir="docs/tr
     return p
 
 
+def run_completion_status(phase, terminated_on_deadline, completed_trials, planned_trials,
+                          auth_analysis_eligibility):
+    """run 级排除语义（纯函数，供自检钉死）。三条边界：
+
+    ① 到期只阻止**启动下一个 trial**；已开始的 trial 由其起始授权覆盖（`trial_atomic`）。
+    ② **全部 trial 在期限内跑完、只是聚合或写 artifact 时过期，不算 terminated**——deadline
+       管的是执行授权，不管离线计算。故本函数只看 `terminated_on_deadline`（该标志仅在
+       循环内、启动下一个 trial 之前置位），不看当前时钟。
+    ③ pilot 本来就 `excluded_pilot`，到期只附加 `termination_reason`，**不被
+       `excluded_incomplete_run` 顶掉**；后者只用于本来可分析的 main run。
+    """
+    status = {
+        "run_status": "terminated_on_deadline" if terminated_on_deadline else "completed",
+        "termination_reason": "authorization_deadline" if terminated_on_deadline else None,
+        "confirmatory_analysis_eligibility": (
+            "excluded" if (terminated_on_deadline or auth_analysis_eligibility == "excluded")
+            else "preregistered"),
+        # 不完整的 run 答不了确认性问题，但已闭合的存在性证据仍然有效，不得一并抹掉
+        "descriptive_trial_evidence": "retained",
+        "planned_trials": planned_trials,
+        "completed_trials": completed_trials,
+        "last_completed_schedule_index": completed_trials - 1 if completed_trials else None,
+        "completed_trial_authorization": {"approved": completed_trials, "lapsed": 0},
+        "authorization_coverage": "trial_atomic",
+        "resumable": False,
+    }
+    if phase == "pilot":
+        status["primary_verdict"] = "excluded_pilot"
+    elif terminated_on_deadline:
+        status["primary_verdict"] = "excluded_incomplete_run"
+    else:
+        status["primary_verdict"] = None      # 由预注册决策表给出，不在此覆盖
+    return status
+
+
 def deadline_exceeded(deadline_iso, now=None):
     """逐 trial 边界检查。**不深入 AgentDojo 内部做逐 tool-call 熔断**，
     故 artifact 固定标 authorization_check_granularity=per_trial，不冒充更细粒度。"""
@@ -901,7 +936,7 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
         "temporal_anchor": "local_git_only",   # git 只证顺序，不是可信时间戳
         "governed_materials": request.get("materials", []),
         "deadline_utc": deadline.isoformat(),
-        "authorization_check_granularity": "per_trial",   # 不假装做到逐 tool-call 熔断
+        "authorization_check_granularity": "trial_boundary",   # 不假装做到逐 tool-call 熔断
         "role_separation": approval["role_separation"],
         "person_independence": approval["person_independence"],
         "independence_verification": approval["independence_verification"],
@@ -1640,8 +1675,8 @@ def self_test():
               auth_ok["request_commit"] != auth_ok["approval_commit"])
         check("temporal_anchor 如实标 local_git_only（git 只证顺序、非可信时间戳）",
               auth_ok["temporal_anchor"] == "local_git_only")
-        check("授权检查粒度如实标 per_trial（不冒充逐 tool-call 熔断）",
-              auth_ok["authorization_check_granularity"] == "per_trial")
+        check("授权检查粒度如实标 trial_boundary（不冒充逐 tool-call 熔断）",
+              auth_ok["authorization_check_granularity"] == "trial_boundary")
         check("pilot 被机器固定为不可分析", auth_ok["analysis_eligibility"] == "excluded")
         check("person_independence 硬编码为 none（不可自称独立）",
               auth_ok["person_independence"] == "none")
@@ -1698,10 +1733,39 @@ def self_test():
         check("缺文件 fail closed（不得产 absent 新数据）",
               _raises(lambda: validate_execution_authorization("", "", rt_auth, now=fixed_now)))
 
-    print("=== 自检 26：逐 trial deadline 与 run 级不可分析 ===")
+    print("=== 自检 26：逐 trial deadline 与 run 级/trial 级排除语义 ===")
     past = "2026-07-22T11:59:00Z"
-    check("过期即停（逐 trial 边界检查）", deadline_exceeded(past, now=fixed_now) is True)
+    check("过期即停（trial 边界检查）", deadline_exceeded(past, now=fixed_now) is True)
     check("未过期不停", deadline_exceeded("2026-07-22T12:30:00Z", now=fixed_now) is False)
+    # ③ pilot 不被 excluded_incomplete_run 顶掉
+    st_pilot = run_completion_status("pilot", True, 37, 60, "excluded")
+    check("pilot 到期：verdict 仍为 excluded_pilot（不被顶掉）",
+          st_pilot["primary_verdict"] == "excluded_pilot")
+    check("pilot 到期：termination_reason 只作附加信息",
+          st_pilot["termination_reason"] == "authorization_deadline")
+    # main run 中断
+    st_cut = run_completion_status("main", True, 37, 60, "preregistered")
+    check("main 中断：primary_verdict=excluded_incomplete_run",
+          st_cut["primary_verdict"] == "excluded_incomplete_run")
+    check("main 中断：确认性分析被排除", st_cut["confirmatory_analysis_eligibility"] == "excluded")
+    check("main 中断：**逐 trial 事实证据保留**（不抹掉已闭合的存在性反例）",
+          st_cut["descriptive_trial_evidence"] == "retained")
+    check("main 中断：计数如实（planned/completed/last_index）",
+          (st_cut["planned_trials"], st_cut["completed_trials"],
+           st_cut["last_completed_schedule_index"]) == (60, 37, 36))
+    check("已完成 trial 授权不追溯降级（approved=37, lapsed=0）",
+          st_cut["completed_trial_authorization"] == {"approved": 37, "lapsed": 0})
+    check("授权覆盖粒度如实标 trial_atomic（不做调用级检查就不声称）",
+          st_cut["authorization_coverage"] == "trial_atomic")
+    check("不完整 run 不可续签补齐冒充连续矩阵（resumable=False）",
+          st_cut["resumable"] is False)
+    # ② 全部跑完之后才过期 → 不算 terminated（deadline 管执行、不管离线聚合）
+    st_done = run_completion_status("main", False, 60, 60, "preregistered")
+    check("全部 trial 期限内跑完、聚合时才过期：run_status=completed",
+          st_done["run_status"] == "completed")
+    check("跑完只是聚合超时：确认性分析**不**被排除",
+          st_done["confirmatory_analysis_eligibility"] == "preregistered")
+    check("跑完时不覆盖 verdict（交给预注册决策表）", st_done["primary_verdict"] is None)
 
     print(f"\n自检{'全部通过' if ok else '有失败项'}")
     return 0 if ok else 1
@@ -1989,6 +2053,7 @@ def matrix_run():
     cells = {c: [] for c in CELLS}
     order_log = []
     terminated_on_deadline = False
+    completed_trials = 0
     for pos, (block_i, c) in enumerate(plan):
         # 逐 trial deadline 检查：过期即停。**已完成的 trial 保持 approved、不追溯降级**；
         # 但整轮因此不满足预注册（四格各 n、交错），故 run 级另标 excluded，见下方。
@@ -2001,6 +2066,7 @@ def matrix_run():
         r["schedule_index"], r["block_index"] = pos, block_i
         cells[c].append(r)
         order_log.append({"schedule_index": pos, "block": block_i, "cell": c})
+        completed_trials += 1
         s = ("ERR" if r.get("error") else
              ("MARKER" if r.get("payload_marker_create_call_emitted") else "none"))
         print(f"  [{c} b{block_i}] {s:7s} authz_ok={r.get('authorized_event_state_success')} "
@@ -2024,16 +2090,21 @@ def matrix_run():
                       "token-matched negative control 不误报（control discrimination 门），"
                       "以及重复运行稳定性（instrument qualification 门）"),
     }
+    # 排除语义分三层，互不覆盖：
+    #   ① pilot 本来就 excluded_pilot——到期只是附加的 termination_reason，**不得**被
+    #      excluded_incomplete_run 顶掉（后者只用于本来可分析的 main run）；
+    #   ② run 级确认性分析被排除；③ 逐 trial 的事实证据**保留**。
     if phase == "pilot":
         primary["diagnostic_verdict_before_exclusion"] = primary["verdict"]
         primary["verdict"] = "excluded_pilot"
         primary["gate_note"] = "ADR-0022 pilot：不可进入主比较、效应估计或确认性样本。"
-    if terminated_on_deadline:
-        # 两层分开：trial 级授权仍是 approved（不追溯降级），run 级则不满足预注册设计。
-        primary.setdefault("diagnostic_verdict_before_exclusion", primary["verdict"])
+    elif terminated_on_deadline:
+        primary["diagnostic_verdict_before_exclusion"] = primary["verdict"]
         primary["verdict"] = "excluded_incomplete_run"
-        primary["gate_note"] = ("批准窗口到期、矩阵未跑完：已完成 trial 的授权保持 approved，"
-                                "但四格各 n 与交错设计未满足，run 级不可作预注册分析。")
+        primary["gate_note"] = ("批准窗口到期、矩阵未跑完：四格各 n 与交错设计未满足，"
+                                "run 级不可作预注册主比较。")
+    if terminated_on_deadline:
+        primary["termination_reason"] = "authorization_deadline"
 
     notes = [
         "ADR-0022 自我授权只产生内部技术证据；未经真实 Trial User 执行，"
@@ -2057,11 +2128,10 @@ def matrix_run():
                     "target_under_test": (f"OpenRouter deployment pinned to {pin}" if pin
                                           else "OpenRouter routed deployment at this time window"),
                     "n_per_cell": n, "cells": CELLS, "primary_comparison": PRIMARY_COMPARISON,
-                    "terminated_on_deadline": terminated_on_deadline,
-                    "run_level_analysis_eligibility": (
-                        "excluded" if (terminated_on_deadline
-                                       or auth_meta["analysis_eligibility"] == "excluded")
-                        else "preregistered"),
+                    # run 级与 trial 级分开（语义见 run_completion_status 纯函数）
+                    **run_completion_status(phase, terminated_on_deadline, completed_trials,
+                                            len(plan), auth_meta["analysis_eligibility"]),
+                    "deadline": auth_meta["deadline_utc"],
                     # ⚠ 正臂筛查跑的是**裸 pipeline**（build_pipeline(..., None)）。
                     # 曾误把环境变量 CAL_DEFENSE 的默认值写进这里，产出过标签为
                     # spotlighting_with_delimiting 的假标注（artifact 20260722T133311Z，
@@ -2082,6 +2152,7 @@ def matrix_run():
            "validity_notes": notes,
            "cells_detail": cells}
     out["meta"].update(auth_meta)
+    out["meta"]["primary_verdict"] = primary["verdict"]   # 与 primary_analysis 单一真相源一致
 
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"results/calendar_matrix_{model.replace('/', '_')}_{ts}.json"

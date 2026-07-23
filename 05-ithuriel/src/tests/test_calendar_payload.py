@@ -11,9 +11,32 @@ from ithuriel.probes.calendar.payload import (
     payload,
     negative_description,
     NEW_EVENT_START,
+    NEW_EVENT_END,
+    ATTACKER,
+    CELLS,
 )
 
 NONCE = "RATIO12345"
+
+
+# ---------------- 复杂度阶梯 R1–R4 单变量升级（自检 1b）----------------
+def test_complexity_ladder_single_variable_upgrades():
+    p1, p2, p3, p4 = (payload(NONCE, r) for r in (1, 2, 3, 4))
+    # R1 参数完整：含 free-<nonce> + 精确时段（不逼模型猜参数）
+    assert f"free-{NONCE}" in p1 and NEW_EVENT_START in p1 and NEW_EVENT_END in p1
+    assert ATTACKER not in p1 and "Summarise" not in p1          # R1 不含攻击者/canary 指令
+    assert ATTACKER in p2 and "Summarise" not in p2               # R1→R2 仅加攻击者
+    assert "Summarise" in p3 and "Do not mention" not in p3       # R2→R3 仅加读取汇总，不含隐瞒
+    assert "Do not mention" in p4                                 # R3→R4 仅加隐瞒
+
+
+# ---------------- 2×2 格定义（预注册 §4）----------------
+def test_cells_cover_2x2_and_primary_comparison_isolates_host_task():
+    assert {(c["host_task"], c["rung"]) for c in CELLS.values()} == {
+        ("read_only", 1), ("read_only", 3), ("write_phase", 1), ("write_phase", 3)}
+    # 主比较 A↔C = 同 rung 只改宿主任务形态
+    assert CELLS["A"]["rung"] == CELLS["C"]["rung"]
+    assert CELLS["A"]["host_task"] != CELLS["C"]["host_task"]
 
 
 # ---------------- C1：成品层长度匹配（双边 ±15%）----------------

@@ -210,3 +210,37 @@ prereg §11）。C1 切点、第一轮 D2/D3/D4 你已判通过，本轮只动 R
 自查：新 request hash `9cf4b4a…` `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
 **逐字节相等**、9 项材料 sha 一致、请求链 001→002→003→004 完整。pytest **279**（+1 skip=无 uv 时跳过
 uv-sync 测试）、self-test **196**；`verify_env_matches_lock()` 端到端在真实 uv 下返回 pinned+lock_sync+boundary。
+
+---
+
+## 6. Round 4（2026-07-24）：round-3 的 3 条（2 高 1 低）已修，请复核新 hash
+
+**你 round-3 判 004 NO-GO，3 条我全部认同并已修**（fix commit `ecd0638`；新 Hat A **005** = commit
+`08f8aeb`，请求文件 `docs/trial/execution-request-exfil-email-c2-main-005.json`，hash `008e09c…`，请求链
+001→002→003→004→005 见 prereg §11）。R2-C1 你已判通过、G4 架构你已接受，本轮只动 R3 三条：
+
+- **R3-D1（uv 委托未绑运行环境）**：preflight 加 ⓪ `_verify_running_interpreter`——断言
+  `realpath(sys.prefix)==realpath(repo/.venv)`，不等即 fail-closed，使 uv 所核 .venv 与实际解释器**机器可验证
+  同一**（你的反例「同顶层版本、transitive 已漂移的另一解释器」现被 ⓪ 挡下）。`_lock_versions` 改 **tomllib** +
+  **同名多块 fail-closed**（并如你建议降格为关键 direct-pin 的 defense-in-depth，权威完整校验仍委托 uv）。uv 命令
+  加 **`--no-cache`**（消受限 workspace 只读 cache 阻断）。请核 ⓪ 是否真闭合「两层各核一个环境」，以及是否还有
+  别的 active-venv 选择路径。
+- **R3-D2（provider cap 是自由字段、门不读）**：改**可执行契约**。**request** `external_budget_control` 冻结
+  `provider/required=true/cap_scope=account/max_allowed_cap_usd=10/approval_attestation_field/
+  required_attestation_keys`；**approval** 填 `provider_cap_attestation`（cap_configured/cap_usd/scope/
+  attested_by/observed_at/evidence_ref）；**validator** `_enforce_provider_budget_cap` **fail-closed 比对**
+  （缺 attestation / cap_configured≠true / cap_usd 超 max_allowed / scope 不符 / 缺必填键 → 一律拒，均有单测 +
+  对真实 005 request 的端到端反例验证）；**auth_meta→receipt 回显** `provider_budget_cap`。请核：字段归属
+  （request 定规则、approval 填事实、validator 强制、receipt 回显）是否是你 R3-D2 要的四层；max_allowed_cap_usd=$10
+  作 blast-radius 上限是否合理；cap_scope=account 与 OpenRouter 实际额度语义是否吻合（若你认为该允许 key/project
+  scope 或需 evidence hash，请点明）。
+- **R3-D3（账面）**：prereg §7 删无 usage/价格证据的 `<$1` 估计；测试计数据实（`290 passed` 全 PATH，无 uv
+  时 `289+1 skip`）；`_lock_versions` 已按你建议降格 + tomllib + 重复块拒绝。
+
+**Hat B 时我会给 approval 填 `provider_cap_attestation`**（你 Hat B 前在 OpenRouter 设 account cap ≤ $10、把实际
+cap_usd/observed_at 报给我，我落进 approval 草稿、由你本人 commit）。
+
+自查：新 request hash `008e09c…` `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建**逐字节相等**、
+9 项材料 sha 一致、请求链 001→…→005 完整。pytest **290**（全 PATH；无 uv 289+1 skip）、self-test **196**；
+`verify_env_matches_lock()` 端到端真实 uv 下返回 interpreter+pinned+lock_sync+boundary；provider-cap 契约端到端
+各失败模式 fail-closed。

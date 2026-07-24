@@ -108,7 +108,7 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
    判别位——这落地了 partner review §6 指出「negative_plain 在上下文层并非无 marker」的纠正（并据此
    收窄 §1 的 C2a/C2b 曝光语义）。
 
-②落码后已跑全量 pytest（279，+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
+②落码后已跑全量 pytest（290，全 PATH；无 uv 时 289+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
 
 ## 7. 样本与预算
 
@@ -116,11 +116,13 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
 30 个可解释仍是 30（可解释≠命中），cap 45 应够采满可解释数。全新样本、成对随机交错、per-trial nonce。
 target `openai/gpt-4o-mini` pin `OpenAI`（延续 pilot，已知会发信）。phase=main、`analysis_eligibility=preregistered`。
 
-**预算语义（partner review 2026-07-24 R2-D2）**：`budget_cap_usd=$3` 是**批准的计划额度、非代码级
-硬成本熔断**——云端模型的硬 cap 需实时读代理商余额/额度，代码侧做不到，只能事前估算。硬熔断由两处
-承担：**135 次 hash-bound attempt cap**（确定性 blast-radius 界）+ **跑前操作员在 OpenRouter 后台设的
-consumption cap**（provider 侧真实额度熔断）。pilot 实测 gpt-4o-mini 均 2.31 秒/次、token 量小，135 次
-实际花费大概率远低于 $1。artifact 会如实标 `budget_enforcement=no live USD metering`。
+**预算语义（partner review 2026-07-24 R2-D2 + R3-D2）**：`budget_cap_usd=$3` 是**批准的计划额度、非
+代码级硬成本熔断**——云端模型的硬 cap 需实时读代理商余额/额度，代码侧做不到，只能事前估算。硬熔断
+由两处承担：**135 次 hash-bound attempt cap**（确定性 blast-radius 界）+ **跑前操作员在 OpenRouter 设的
+consumption cap**（provider 侧真实额度熔断）。**该 provider cap 是可执行契约、非自由声明（R3-D2）**：
+request `external_budget_control` 冻结 required/最大允许额度/scope/所需 attestation 字段，approval 填跑前
+attestation，**validator fail-closed 强制比对**，receipt 回显。artifact 如实标 `budget_enforcement=no live
+USD metering`。（不写具体成本估计——pilot 只存了时延、未存 token usage×价格快照，故不据它下 `<$1` 断言。）
 
 ## 8. 判据（分层 C2，Fisher + Holm(2)）
 
@@ -142,11 +144,14 @@ instrument qualification / 重复运行稳定性 / probe readiness**——那是
 
 Hat A（冻结本预注册 + **9 项 governed materials** = 信任核 7 文件 + `pyproject.toml` + `uv.lock`，含
 修复后的新哈希）→ Hat B 用户本人独立 commit → 运行 → receipt。**运行依赖身份**（Python/AgentDojo/openai
-版本）写进 hash-bound runtime（D1）：这三个关键版本 Hat A 后漂移 → runtime 失配 → lapsed；跑前另有
-`verify_env_matches_lock()` preflight 核 installed==uv.lock pin（缺 pin fail-closed）+ 借 uv 校验完整必需
-依赖同步（含 transitive）。**边界（R2-D1，务必守）**：这是**版本级**同步校验，**不**证明同版本包的文件
-字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；在 self-authorized T0–T2 可接受。
-Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
+版本）写进 hash-bound runtime（D1）：三个关键版本 Hat A 后漂移 → runtime 失配 → lapsed；跑前
+`verify_env_matches_lock()` preflight **三层**（R3-D1）：⓪`realpath(sys.prefix)==repo/.venv`（绑定 uv 所核
+环境与实际解释器）① 关键 pin installed==uv.lock（缺 pin/重复块 fail-closed）② 借 `uv --no-cache sync
+--check --frozen --offline --inexact` 校验完整必需依赖 closure（含 transitive）。**边界（务必守）**：**版本级**
+同步校验，**不**证明同版本包字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；self-authorized
+T0–T2 可接受。**外部 provider budget cap 是可执行契约（R3-D2）**：request 定规则、approval 作跑前
+attestation、validator fail-closed 比对、receipt 回显（见 §7）。Story 作 provenance、不进哈希门。
+不与 additive/aug/pilot 池化。
 
 ---
 
@@ -177,13 +182,24 @@ Round 2 段）：
 - **R2-D2**（G4 计划额度未进冻结）：§7 预算改「计划额度、非硬熔断」，`execution_runtime` 错误信息改「批准
   额度」，request `known_fidelity_gaps` 加预算项；`post_action_marker_echo`→`post_cutoff_marker_observed`。
 
-**请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，codex round-1 NO-GO）→
-`002`（`a6713d4`，6 条修复）→ `003`（`e5ee570`，自查补 D1 preflight）→ **`004`（当前，与本 prereg 同 commit，
-codex round-2 三条修复）**。
+**codex round-3 再判 NO-GO（2 高 1 低），已修**（Round 3 段）：
+- **R3-D1**（uv 委托可接受但未绑环境）：`uv sync` 核项目 .venv、pin 检查读实际解释器，两层各核一个环境，
+  「同顶层版本、transitive 已漂移的另一解释器」仍过门。修：preflight ⓪ 断言 `realpath(sys.prefix)==repo/.venv`
+  fail-closed；`_lock_versions` 改 tomllib + 重复块 fail-closed（降格为 direct-pin defense-in-depth）；uv 加
+  `--no-cache`（避只读 cache 阻断）。
+- **R3-D2**（provider cap 是自由字段、门不读）：改**可执行契约**——request `external_budget_control` 冻结
+  required/max_allowed_cap_usd/scope/所需 attestation 字段；approval 填 `provider_cap_attestation`；validator
+  `_enforce_provider_budget_cap` fail-closed 比对（缺/未配置/超上限/scope 不符/缺必填键均拒）；auth_meta→receipt 回显。
+- **R3-D3**（账面）：删无 usage/价格证据的 `<$1` 估计；测试计数据实（`290 passed` 全 PATH，无 uv 时 `289+1 skip`）。
+
+**请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，round-1 NO-GO）→ `002`
+（`a6713d4`，6 修）→ `003`（`e5ee570`，自查 D1 preflight）→ `004`（`3e6c4df`，round-2 三修）→
+**`005`（当前，与本 prereg 同 commit，round-3 三修）**。
 
 ## 待办
 
-1. ✅ §0 主判据、§6 代码前置（三层语义 + §6.2 曝光遥测含 C1 修正）、§4 分层聚合（C2/R2-C1）、
-   §7/§10 预算与依赖绑定（R2-D2/D1/R2-D1）均已落码，pytest 279（+1 skip）/ self-test 196 全过。
-2. ✅ 新执行请求（当前 `004`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
-3. ⏳ partner review round-3 复核 → 用户 Hat B → 跑 n=30/臂（计划额度 $3、跑前设 OpenRouter cap、窗口按签时定）。
+1. ✅ §0 主判据、§6 代码前置、§4 分层聚合、§7/§10 预算与依赖绑定 + 环境同一性 + provider-cap 契约
+   （R1 6 条 + R2 3 条 + R3 3 条）均已落码，pytest **290**（全 PATH；无 uv 时 289+1 skip）/ self-test 196 全过。
+2. ✅ 新执行请求（当前 `005`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
+3. ⏳ partner review round-4 复核新 hash → 用户 Hat B（含 provider_cap_attestation）→ 跑 n=30/臂
+   （计划额度 $3、跑前设 OpenRouter cap ≤ $10、窗口按签时定）。

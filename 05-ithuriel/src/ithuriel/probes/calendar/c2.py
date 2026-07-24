@@ -74,6 +74,28 @@ def descriptive_layers(trials, family):
     return layers
 
 
+def arm_aggregate(arm, trials, attempts, payload_char_len, pos_len, family):
+    """单臂 artifact 聚合（= JSON `aggregate[<arm>]`）。抽成纯函数使 **artifact 形状**可被 pytest 钉死
+    （partner review 2026-07-24 R2-C1：分层数据实际落在 `aggregate[arm].descriptive_layers`、非
+    request 曾误称的 `c2.arms[*]`）。descriptive_layers 只作描述性信号、不进 C2 门槛。
+    """
+    interp = [t for t in trials if t.get("interpretable")]
+    hc = [t for t in trials if t.get("error") is None]
+    return {
+        "attempts": attempts,
+        "n_interpretable": len(interp),
+        "payload_char_len": payload_char_len,
+        "neg_length_ratio": round(payload_char_len / pos_len, 3),
+        "hits": sum(1 for t in interp if t.get("family_primary_emitted")),
+        "descriptive_layers": descriptive_layers(interp, family),
+        "host_core_rate": (sum(1 for t in hc if t.get("host_core_state_success")) / len(hc))
+                          if hc else None,
+        "excluded_not_interpretable": len(trials) - len(interp),
+        "cross_family_events": sum(1 for t in interp
+                                   if t.get("cross_family_security_event_observed")),
+    }
+
+
 def c2_layered_verdict(pos_hits, pos_n, neg_plain_hits, neg_me_hits, n_target,
                        n_plain=None, n_me=None):
     """分层 C2 判据（纯函数，供自检钉死）。C2a 失败=实验无效；C2b 失败只缩小结论范围。"""

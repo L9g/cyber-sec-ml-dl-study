@@ -14,6 +14,7 @@ Hat A 冻结的不可变 execution request、Hat B 后续独立 commit 的 appro
 import os
 import sys
 import json
+import shutil
 import subprocess
 import datetime
 import hashlib
@@ -61,24 +62,64 @@ def _lock_versions(repo_root, packages=("agentdojo", "openai")):
     return out
 
 
-def verify_env_matches_lock(repo_root=None):
-    """D1 preflight：已装版本必须与 uv.lock 声明一致，否则 fail closed（partner review 2026-07-24）。
+_EXPECTED_PINS = ("agentdojo", "openai")
 
-    runtime 里的 `environment` 相等门只捕获 **Hat A 之后**的漂移；它捕获不了「Hat A 冻结时已装版本
-    与冻结的 lock 就不一致」这一初始不一致（会把 installed 版本静默烘进 request）。本 preflight 在跑前
-    显式核 installed == lock-declared，闭合该 gap。uv.lock 已是受管辖材料（字节冻结），故 lock 声明本身
-    也在哈希门内。
+
+def _verify_pinned_versions(repo_root):
+    """核 hash-bound 的关键 pin（agentdojo/openai）installed == uv.lock。
+
+    **缺 pin 即 fail-closed**（partner review 2026-07-24 R2-D1）：mismatch 只遍历 `locked` 会让「解析器
+    漏块 / lock 缺该包」静默通过，故先强制 `_EXPECTED_PINS` 全部解析到、再逐个比对。
     """
-    repo_root = repo_root or _PROJECT_ROOT
-    locked = _lock_versions(repo_root)
+    locked = _lock_versions(repo_root, _EXPECTED_PINS)
+    missing = [p for p in _EXPECTED_PINS if p not in locked]
+    if missing:
+        raise AuthorizationError(
+            f"uv.lock 未解析到必需 pin {missing}（D1 fail-closed：解析器漏块或 lock 缺该包）")
     installed = _env_identity()
-    mismatch = {p: (locked.get(p), installed.get(p)) for p in locked
-                if locked.get(p) != installed.get(p)}
+    mismatch = {p: (locked[p], installed.get(p)) for p in _EXPECTED_PINS
+                if locked[p] != installed.get(p)}
     if mismatch:
         raise AuthorizationError(
-            "已装版本与 uv.lock 不一致（D1 preflight fail-closed）："
+            "已装版本与 uv.lock 不一致（D1）："
             + "; ".join(f"{p}: lock={lk} installed={ins}" for p, (lk, ins) in mismatch.items()))
-    return {"locked": locked, "installed": {p: installed.get(p) for p in locked}}
+    return {"locked": locked, "installed": {p: installed.get(p) for p in _EXPECTED_PINS}}
+
+
+def _verify_lock_sync(repo_root):
+    """借 uv 自身的 frozen-lock 校验捕获 **transitive 依赖漂移**（pydantic/httpx/jiter 等——只比对
+    agentdojo/openai 两个 pin 看不到它们，但它们能改 tool schema / 序列化 / transport；R2-D1）。
+
+    读-only：`uv sync --check --frozen --offline --inexact`（in-sync→exit 0；不改环境、不联网、不删多余包）。
+    缺 uv 即 fail-closed（无法校验完整依赖同步）。
+    """
+    uv = shutil.which("uv")
+    if not uv:
+        raise AuthorizationError("uv 不在 PATH（D1 fail-closed：无法校验完整依赖同步）")
+    proc = subprocess.run([uv, "sync", "--check", "--frozen", "--offline", "--inexact"],
+                          cwd=repo_root, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise AuthorizationError(
+            "uv 依赖同步校验失败（D1，transitive 漂移或环境不同步）："
+            + (proc.stderr or proc.stdout or "").strip()[:400])
+    return {"method": "uv sync --check --frozen --offline --inexact", "returncode": 0}
+
+
+def verify_env_matches_lock(repo_root=None):
+    """D1 preflight（partner review 2026-07-24，R2-D1 加固）：两层，任一失败 fail-closed。
+
+    ① 关键 pin（agentdojo/openai）installed == uv.lock，**缺 pin 即拒**；
+    ② 借 uv 校验**完整必需依赖同步**（含 transitive），捕获 pin 检查看不到的间接依赖漂移。
+
+    与 runtime 里的 `environment` 相等门配合：相等门捕获 Hat A **之后**的关键版本漂移，本 preflight
+    捕获「冻结当刻 installed ≠ 冻结 lock」的初始不一致 + transitive 漂移。**边界（务必守）**：这是
+    **版本级**同步校验，**不**证明同版本包的文件字节未被就地篡改；在 self-authorized T0–T2 可接受，
+    但不得据此声称「任意改装 `.venv` 都会 lapsed」。
+    """
+    repo_root = repo_root or _PROJECT_ROOT
+    return {"pinned": _verify_pinned_versions(repo_root),
+            "lock_sync": _verify_lock_sync(repo_root),
+            "boundary": "version-level sync only; not byte-level package-file integrity"}
 from ithuriel.probes.calendar.payload import MEASUREMENT_SCHEMA_VERSION, CELLS
 
 # 本模块从 scripts/run_calendar_probe.py 搬入 src/ithuriel/governance/ 后，默认 repo_root 须指向
@@ -284,7 +325,9 @@ def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_c
         raise AuthorizationError("CAL_PHASE 必须是 pilot 或 main")
     if not isinstance(budget_cap_usd, (int, float)) or isinstance(budget_cap_usd, bool) \
             or budget_cap_usd <= 0:
-        raise AuthorizationError("CAL_BUDGET_CAP_USD 必须是正数硬上限")
+        # R2-D2：这是**批准的计划额度**、非代码级硬成本熔断（云端硬 cap 需实时读余额，做不到）；
+        # 硬熔断由 provider 侧 cap + max_trials 承担。
+        raise AuthorizationError("CAL_BUDGET_CAP_USD 必须是正数批准额度（计划额度，非代码级硬熔断）")
     if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
         raise AuthorizationError("CAL_N_TRIALS 必须是正整数")
     if not isinstance(max_runtime_minutes, (int, float)) or isinstance(max_runtime_minutes, bool) \

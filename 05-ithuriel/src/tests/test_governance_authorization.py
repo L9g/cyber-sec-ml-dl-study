@@ -6,6 +6,7 @@ git-backed 的 validate_execution_authorization 由 runner --self-test 端到端
 """
 import datetime
 import os
+import shutil
 
 import pytest
 
@@ -67,21 +68,43 @@ def test_all_trials_done_before_deadline_is_completed_not_terminated():
     assert st["primary_verdict"] is None  # 交给预注册决策表，不在此覆盖
 
 
-# ---------------- D1 preflight：已装版本 vs uv.lock（partner review 2026-07-24）----------------
-def test_env_lock_check_passes_on_current_repo():
-    # 当前 .venv 与 uv.lock 一致 → 返回 locked/installed，且两者相等。
-    out = verify_env_matches_lock()
+# ---------------- D1 preflight：已装版本 vs uv.lock（partner review 2026-07-24 + R2-D1 加固）--------
+def test_pinned_versions_pass_on_current_repo():
+    # 当前 .venv 与 uv.lock 的关键 pin 一致 → 返回 locked/installed 且相等（纯 pin 层，无 uv）。
+    out = EA._verify_pinned_versions(_PROJECT_ROOT)
     assert set(out["locked"]) == {"agentdojo", "openai"}
     assert out["locked"] == out["installed"]
 
 
-def test_env_lock_check_fails_closed_on_installed_drift(monkeypatch):
-    # 模拟已装 agentdojo 漂移到 lock 未声明的版本 → fail closed（捕获 runtime 相等门抓不到的初始不一致）。
+def test_pinned_versions_fail_closed_on_installed_drift(monkeypatch):
+    # 已装 agentdojo 漂移 → fail closed（捕获 runtime 相等门抓不到的初始不一致）。
     real = EA._env_identity()
-    monkeypatch.setattr(EA, "_env_identity",
-                        lambda: {**real, "agentdojo": "0.9.99-drifted"})
+    monkeypatch.setattr(EA, "_env_identity", lambda: {**real, "agentdojo": "0.9.99-drifted"})
     with pytest.raises(AuthorizationError, match="uv.lock 不一致"):
-        verify_env_matches_lock()
+        EA._verify_pinned_versions(_PROJECT_ROOT)
+
+
+def test_pinned_versions_fail_closed_on_missing_pin(monkeypatch):
+    # ⭐ R2-D1 关键回归：解析器漏块 / lock 缺预期 pin **不得静默通过**。
+    # 旧实现 mismatch 只遍历 locked，缺 openai 会返回 success；现强制 EXPECTED_PINS 全解析到。
+    monkeypatch.setattr(EA, "_lock_versions",
+                        lambda root, packages=EA._EXPECTED_PINS: {"agentdojo": "0.1.35"})
+    with pytest.raises(AuthorizationError, match="未解析到必需 pin"):
+        EA._verify_pinned_versions(_PROJECT_ROOT)
+
+
+def test_lock_sync_fail_closed_when_uv_missing(monkeypatch):
+    # uv 不在 PATH → fail closed（无法校验完整依赖同步，不静默放行）。
+    monkeypatch.setattr(EA.shutil, "which", lambda _name: None)
+    with pytest.raises(AuthorizationError, match="uv 不在 PATH"):
+        EA._verify_lock_sync(_PROJECT_ROOT)
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv 不在 PATH（本机跑跳过）")
+def test_lock_sync_passes_when_env_in_sync():
+    # 借 uv 校验完整必需依赖同步（含 transitive）；当前 .venv 与 lock 同步 → returncode 0。
+    out = EA._verify_lock_sync(_PROJECT_ROOT)
+    assert out["returncode"] == 0
 
 
 def test_lock_versions_ignores_dependency_reference_lines():

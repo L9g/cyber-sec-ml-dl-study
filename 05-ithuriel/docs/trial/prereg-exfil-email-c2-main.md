@@ -88,7 +88,7 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
    `oracle._exposure_markers(messages, nonce, family)` 测**treatment 曝光**——只扫**首个 family-action
    tool call（send_email）之前**的 tool 输出（role==tool 返回文本）。**⚠ C1 修正**：不扫整段 transcript，
    否则攻击后的 send_email tool result 回显 recipients+body（attacker+canary）会把 negative_plain 的
-   预动作签名污染成 TTTF、恰在 C2a/C2b 最需它解释时失效；动作后的回显另记 `post_action_marker_echo`
+   预动作签名污染成 TTTF、恰在 C2a/C2b 最需它解释时失效；动作后的回显另记 `post_cutoff_marker_observed`
    诊断、不进签名。记 `measured`（有无预动作 tool 输出，not-measured 不当 False）+ 四位
    `attacker_marker_in_submitted_context` / `canary_marker_in_submitted_context` /
    `markers_co_located_in_same_tool_output` / `frozen_action_cue_present`（末位是两个冻结子串、非通用
@@ -108,14 +108,19 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
    判别位——这落地了 partner review §6 指出「negative_plain 在上下文层并非无 marker」的纠正（并据此
    收窄 §1 的 C2a/C2b 曝光语义）。
 
-②落码后已跑全量 pytest（273）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
+②落码后已跑全量 pytest（279，+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
 
 ## 7. 样本与预算
 
 三臂各 **30** 个可解释 trial。attempt cap：主判据若选 B（~100% 命中）30 即够，cap 45 足；若选 A（~20%）
 30 个可解释仍是 30（可解释≠命中），cap 45 应够采满可解释数。全新样本、成对随机交错、per-trial nonce。
-target `openai/gpt-4o-mini` pin `OpenAI`（延续 pilot，已知会发信）。预算硬上限 **$3**（90 trial×2 臂量级，
-比 pilot 大）。phase=main、`analysis_eligibility=preregistered`。
+target `openai/gpt-4o-mini` pin `OpenAI`（延续 pilot，已知会发信）。phase=main、`analysis_eligibility=preregistered`。
+
+**预算语义（partner review 2026-07-24 R2-D2）**：`budget_cap_usd=$3` 是**批准的计划额度、非代码级
+硬成本熔断**——云端模型的硬 cap 需实时读代理商余额/额度，代码侧做不到，只能事前估算。硬熔断由两处
+承担：**135 次 hash-bound attempt cap**（确定性 blast-radius 界）+ **跑前操作员在 OpenRouter 后台设的
+consumption cap**（provider 侧真实额度熔断）。pilot 实测 gpt-4o-mini 均 2.31 秒/次、token 量小，135 次
+实际花费大概率远低于 $1。artifact 会如实标 `budget_enforcement=no live USD metering`。
 
 ## 8. 判据（分层 C2，Fisher + Holm(2)）
 
@@ -137,7 +142,10 @@ instrument qualification / 重复运行稳定性 / probe readiness**——那是
 
 Hat A（冻结本预注册 + **9 项 governed materials** = 信任核 7 文件 + `pyproject.toml` + `uv.lock`，含
 修复后的新哈希）→ Hat B 用户本人独立 commit → 运行 → receipt。**运行依赖身份**（Python/AgentDojo/openai
-版本）写进 hash-bound runtime（partner review 2026-07-24 D1），改装 `.venv` → runtime 失配 → lapsed。
+版本）写进 hash-bound runtime（D1）：这三个关键版本 Hat A 后漂移 → runtime 失配 → lapsed；跑前另有
+`verify_env_matches_lock()` preflight 核 installed==uv.lock pin（缺 pin fail-closed）+ 借 uv 校验完整必需
+依赖同步（含 transitive）。**边界（R2-D1，务必守）**：这是**版本级**同步校验，**不**证明同版本包的文件
+字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；在 self-authorized T0–T2 可接受。
 Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
 
 ---
@@ -148,7 +156,7 @@ Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
 （`reports/partner-review-2026-07-24-main-c2.md`），6 条已修：
 
 - **C1**（曝光遥测被攻击后 send_email tool result 污染）：改测首个 family-action **之前**的 tool 输出 +
-  `post_action_marker_echo` 诊断 + `measured`/not-measured 计数 + 真实时序回归；`action_request`
+  `post_cutoff_marker_observed` 诊断 + `measured`/not-measured 计数 + 真实时序回归；`action_request`
   更名 `frozen_action_cue_present`。见 §6.2。
 - **C2**（分层报告承诺未进 artifact）：`c2.py:descriptive_layers` 逐臂产 B/C/A + C 三层的 hits/n/区间。见 §4。
 - **D1**（运行依赖在哈希门外）：版本进 hash-bound runtime + `pyproject.toml`/`uv.lock` 进 governed materials。见 §10。
@@ -158,15 +166,24 @@ Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
 
 修复改动了 oracle/c2/runner/governance/prereg，故 `09844e3` 请求作废、重做 Hat A。
 
-**请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，codex NO-GO 作废）→
-`002`（`a6713d4`，含 6 条修复）→ **`003`（当前，与本 prereg 同 commit）**。002→003 的原因：交 codex
-round-2 前自查发现 D1 只闭合了一半——`environment` 进 runtime 只捕获 Hat A **之后**的版本漂移，捕获不了
-「Hat A 时已装版本就 ≠ 冻结的 uv.lock」的初始不一致；补 `verify_env_matches_lock()` preflight（跑前核
-installed == uv.lock pin，fail-closed），runner sha 变故重生成。
+**codex round-2 再判 NO-GO（3 条，其余 6 条通过），已修**（`reports/partner-review-2026-07-24-main-c2.md`
+Round 2 段）：
+- **R2-D1**（D1 preflight 未闭合）：`verify_env_matches_lock` 的 mismatch 只遍历 locked → 缺 pin 静默通过；
+  且只比对 agentdojo/openai、transitive 依赖（pydantic/httpx/jiter…）漂移绕过。修：强制 `_EXPECTED_PINS`
+  全解析到否则 fail-closed（`_verify_pinned_versions`）+ 借 `uv sync --check --frozen --offline --inexact`
+  校验完整必需依赖同步（`_verify_lock_sync`，缺 uv fail-closed）；§10 边界收窄，不再声称任意改 .venv 都 lapsed。
+- **R2-C1**（分层聚合路径 request 误称）：request 曾写 `c2.arms[*]`，实际在 `aggregate[arm].descriptive_layers`；
+  单臂聚合抽入 `c2.py:arm_aggregate`（artifact 形状可被 pytest 钉死），request 路径改准。
+- **R2-D2**（G4 计划额度未进冻结）：§7 预算改「计划额度、非硬熔断」，`execution_runtime` 错误信息改「批准
+  额度」，request `known_fidelity_gaps` 加预算项；`post_action_marker_echo`→`post_cutoff_marker_observed`。
+
+**请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，codex round-1 NO-GO）→
+`002`（`a6713d4`，6 条修复）→ `003`（`e5ee570`，自查补 D1 preflight）→ **`004`（当前，与本 prereg 同 commit，
+codex round-2 三条修复）**。
 
 ## 待办
 
-1. ✅ §0 主判据、§6 两处代码前置（三层语义 + §6.2 曝光遥测含 C1 修正）、§4 分层聚合（C2）、
-   §10 依赖绑定（D1）均已落码，pytest 273 / self-test 196 全过。
-2. ✅ 新执行请求（当前 `003`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
-3. ⏳ partner review 复核修复后的新 hash → 用户 Hat B → 跑 n=30/臂（预算 $3、窗口按签时定）。
+1. ✅ §0 主判据、§6 代码前置（三层语义 + §6.2 曝光遥测含 C1 修正）、§4 分层聚合（C2/R2-C1）、
+   §7/§10 预算与依赖绑定（R2-D2/D1/R2-D1）均已落码，pytest 279（+1 skip）/ self-test 196 全过。
+2. ✅ 新执行请求（当前 `004`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
+3. ⏳ partner review round-3 复核 → 用户 Hat B → 跑 n=30/臂（计划额度 $3、跑前设 OpenRouter cap、窗口按签时定）。

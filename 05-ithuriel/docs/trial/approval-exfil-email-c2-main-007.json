@@ -1,0 +1,30 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "088d9311ed2ac2121650a650a791fae342a99f6a736fb1040975e5382e4524aa",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 3.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "reports/partner-review-2026-07-24-main-c2.md —— codex 5 轮复核（R1 6 + R2/R3/R4 各 3 + R5 1 条），停止线 spot-check 对 Hat A 007（hash 088d9311）判 GO；AI-agent 复核不构成人员独立性",
+  "provider_cap_attestation": {
+   "cap_configured": true,
+   "cap_usd": 3,
+   "scope": "account",
+   "attested_by": "l9g",
+   "observed_at": "2026-07-24T21:47:21Z",
+   "evidence_ref": null
+  },
+  "valid_from": "2026-07-24T21:47:21Z",
+  "valid_until": "2026-07-25T00:47:21Z",
+  "notes": "exfil_via_email main C2（gpt-4o-mini@OpenAI，三臂各 30 可解释，preregistered）。主判据 C=calendar_content_egress。跑前已在 OpenRouter 设 account consumption cap $3（≤ request max_allowed $10，provider 侧硬停）。窗口 3h、跑前 now+90min≤valid_until。"
+ }
+}

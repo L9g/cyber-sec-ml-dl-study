@@ -244,3 +244,34 @@ cap_usd/observed_at 报给我，我落进 approval 草稿、由你本人 commit�
 9 项材料 sha 一致、请求链 001→…→005 完整。pytest **290**（全 PATH；无 uv 289+1 skip）、self-test **196**；
 `verify_env_matches_lock()` 端到端真实 uv 下返回 interpreter+pinned+lock_sync+boundary；provider-cap 契约端到端
 各失败模式 fail-closed。
+
+---
+
+## 7. Round 5（2026-07-24）：round-4 的 3 条（2 高 1 中）已修，请复核新 hash
+
+**你 round-4 判 005 NO-GO，3 条我全部认同并已修**（fix commit `b38e212`；新 Hat A **006** = commit
+`4f186a5`，请求文件 `docs/trial/execution-request-exfil-email-c2-main-006.json`，hash `a5ab0b3…`，请求链
+001→…→006 见 prereg §11）。R3-D3 你已判通过，provider-cap 的 request/approval 归属你已接受，本轮只动 R4 三条：
+
+- **R4-D1（⓪ 只核 sys.prefix，uv 目标仍被 UV_* 重定向）**：`_verify_lock_sync` 给 uv 子进程**显式受控 env**——
+  强制 `UV_PROJECT_ENVIRONMENT=realpath(repo/.venv)`、清 `UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`，并用
+  `--no-config` + 绝对 `--project <repo_root>`。**实测**：继承恶意 `UV_PROJECT_ENVIRONMENT=/tmp/evil` 时，修复后
+  仍核 repo/.venv（rc=0、pinned_project_environment=repo/.venv）；恶意值不覆盖时 uv 会去核 /tmp/evil。另
+  `_verify_running_interpreter` 加**拒非空 PYTHONPATH/PYTHONHOME**（runner 自 `sys.path.insert(0,../src)`，计费跑
+  不需要它们，故安全拒绝）。请核：受控 env 是否遗漏别的 uv 选择变量（如 `UV_CACHE_DIR` 只影响 cache 不影响
+  target，我未清）、以及 PYTHONPATH 拒绝 vs「诚实声明 import provenance 边界」你倾向哪个（我选了拒绝+边界声明并存）。
+- **R4-D2（validator fail-closed 不完整）**：`_finite_positive`（`numbers.Real` ∧ ¬bool ∧ `math.isfinite` ∧ >0）
+  同时校验 **approval cap 与 request ceiling**（你的 `cap_usd=NaN` 反例现抛「必须是有限正数」）；`observed_at` 用
+  `_utc()` **严格解析**且**拒未来**（>now+5min）；**rule provider 与 approval.approved_provider 规范化（小写）一致性**
+  比较（cap 规则须适用于实际 provider）。全部有单测 + 对真实 006 request 端到端反例。
+- **R4-C1（receipt 未回显）**：`write_run_receipt` 增 `provider_budget_cap` + `approved_budget_cap_usd` +
+  `budget_enforcement`，补 receipt shape 回归测试。四层（request 规则 / approval attestation / validator 强制 /
+  receipt 回显）现全部落地。
+
+**Hat B 时我给 approval 填 `provider_cap_attestation`**（你 Hat B 前设 OpenRouter account cap ≤ $10、把实际
+cap_usd 与带时区 observed_at 报我，我落进 approval 草稿由你本人 commit；validator 会 fail-closed 校验它）。
+
+自查：新 request hash `a5ab0b3…` `--hash-execution-request` 复算一致、runtime 逐字节相等、9 材料 sha 一致、
+请求链完整。pytest **299**（全 PATH；无 uv 298+1 skip）、self-test **196**；`verify_env_matches_lock()` 端到端返回
+interpreter+pinned+lock_sync(pinned_project_environment=repo/.venv)+boundary；provider-cap 各失败模式（NaN/inf/
+非法 observed_at/未来时间/provider 不符/超上限/scope 不符/缺键）均 fail-closed。

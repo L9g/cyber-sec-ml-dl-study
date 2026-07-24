@@ -1,12 +1,125 @@
 # Partner review — exfil_via_email main C2 + §6.2 曝光遥测
 
-**当前 verdict（Round 3）：NO-GO。** 暂不签 Hat B 004。R2-C1 已闭合；`uv` 委托本身可接受，当前
-lock 也没有实际漏解析。但完整依赖检查核的是项目 `.venv`，没有证明它就是当前 runner 的解释器环境；同时
-OpenRouter cap 虽进入冻结叙述，却没有冻结可比较的 cap 要求，approval 中的自由字段也不会被授权门校验。
-这两处须先闭合并重做 Hat A 005。
+**当前 verdict（Round 4）：NO-GO。** 暂不签 Hat B 005。R3-D3 已通过；R3-D1 的 `sys.prefix` 断言确实
+挡住了“直接用另一 venv 跑 runner”，但 uv 的目标仍可被继承的 `UV_PROJECT_ENVIRONMENT`/`UV_PROJECT`
+改写，因而两层仍可能核不同环境。provider-cap 的 request/approval/validator 三层方向正确，且用户定义的
+`account` scope / `$10` blast-radius ceiling 可接受；但 validator 仍接受 `NaN` cap 与非时间字符串，receipt
+也没有实际回显 `provider_budget_cap`。须修后重做 Hat A 006。
 
-G4 的架构决定仍然成立：$3 可以是计划额度，135 次 attempt cap + provider-side cap 可以承担硬边界，**不要求**
-新增代码级实时 USD meter。阻塞的是 provider cap 的前置条件尚未形成可 fail-closed 的 request→approval 证据契约。
+G4 架构结论不变：$3 是计划额度，135 次 attempt cap + OpenRouter account cap 是可接受的硬边界组合，
+**不要求**代码级实时 USD meter。
+
+## Round 4 复核（Hat A 005 / `008e09c…`）
+
+### Round-4 汇总表
+
+| ID | 层 | 严重度 | 位置 | 一句话 |
+|----|----|--------|------|--------|
+| R4-D1 | design | high | `execution_authorization.py:94-145` | ⓪ 只核 `sys.prefix`；uv 子进程继承的 `UV_PROJECT_ENVIRONMENT`/`UV_PROJECT` 仍可把 target/project 重定向到另一环境 |
+| R4-D2 | design | high | `_enforce_provider_budget_cap():404-441` | cap 比较未拒绝非有限浮点，`observed_at` 只核非空；`NaN` + 任意非空字符串可通过所谓 fail-closed 契约 |
+| R4-C1 | code | med | `write_run_receipt():259-281` | auth meta 有 `provider_budget_cap`，artifact 也会保留，但 receipt 构造器没有该键，冻结的“四层回显”声明未兑现 |
+
+纪律层 0 条。R3-D3 的成本断言和测试计数均已闭合。
+
+### R3 三修逐条结论
+
+| Round-3 项 | Round-4 状态 | 结论 |
+|-------------|--------------|------|
+| R3-D1 环境同一性 | **部分通过** | 另一解释器反例被 `sys.prefix` 挡下；uv 自身的环境/项目选择仍可被继承环境变量改写，转 R4-D1 |
+| R3-D2 provider-cap 四层 | **部分通过** | request 规则正确，approval 主落点正确，validator 已接线但类型/时间 fail-closed 不完整，receipt 未回显，转 R4-D2/R4-C1 |
+| R3-D3 账面修正 | **通过** | `<$1` 无证据估计已删除；当前真实结果 290 passed，无 uv 时的 conditional skip 也表述准确 |
+
+### R4-D1 — ⓪ 关闭了 Python 解释器选择，却没钉死 uv 的 target/project
+
+- 层 / 严重度：design / high
+- 位置：`src/ithuriel/governance/execution_authorization.py:94-145`
+- 已通过部分：`realpath(sys.prefix)==realpath(repo/.venv)` 对正常 venv/符号链接形状是正确不变量；当前实际
+  runner 的两值均为项目 `.venv`。用另一 venv 的 Python 启动、即使顶层 agentdojo/openai 版本相同，也会在
+  ⓪ fail-closed。tomllib + duplicate block 拒绝、`--no-cache` 和 uv 完整 closure 委托也都正确。
+- **未闭合反例**：保持 runner 用项目 `.venv/bin/python`，令项目 `.venv` 的某个 transitive 漂移，同时在
+  另一干净环境设置 lock 所需版本；运行前设置 `UV_PROJECT_ENVIRONMENT=<另一环境>`。⓪ 仍通过，因为它只看
+  `sys.prefix`；pin 层只核实际解释器的两个 direct pin，也通过；uv 子进程继承该变量后改查另一干净环境。
+  实测在当前代码同款命令前加该变量，uv 明确输出 `Would create project environment at: /tmp/...`，没有选择
+  repo `.venv`。若该路径预先同步，closure 层即可返回 0。
+- `UV_PROJECT`/`UV_WORKING_DIR` 同样能影响 uv 的项目发现；当前命令只设 `cwd`，未用 CLI `--project`，也未给
+  子进程构造受控 env。因此“uv 所核 `.venv` 与实际解释器机器可验证同一”仍是过强声明。
+- 最小修复：给 uv 子进程显式受控环境，将 `UV_PROJECT_ENVIRONMENT` 强制设为已验证的 repo `.venv`，并用
+  绝对 `--project <repo_root>`；清除/覆盖 `UV_PROJECT`、`UV_WORKING_DIR`、`UV_PYTHON` 等会改变选择的变量，
+  最好加 `--no-config`。测试须设置恶意 override 后断言 subprocess 仍以 repo/.venv + repo project 为目标，
+  而不只 monkeypatch `sys.prefix`。
+- import-path 残余：`PYTHONPATH=/tmp` 不改变 `sys.prefix`，当前实测会进入 `sys.path`。这不是本次 uv target
+  反例成立所必需，但 006 应至少拒绝/清除非空 `PYTHONPATH`、`PYTHONHOME`，或把“只绑定 prefix 与已装
+  distribution，不证明 import provenance”加入边界。self-authorized T0–T2 下不要求继续升级到 package 字节/
+  `sitecustomize` 的对抗性完整性。
+- 挑战纪律？：否。
+
+### provider-cap 四层专项结论
+
+#### 第一层 request：通过
+
+- `external_budget_control` 已冻结 provider、`required=true`、scope、最大允许 cap、approval 字段名和必填键；
+  它是规范性规则，不再只是 `known_fidelity_gaps` 中的一句话。
+- 按用户明确给出的实际额度语义，`cap_scope=account` 与 OpenRouter 账户级消费上限吻合；
+  `max_allowed_cap_usd=$10` 是**账户 blast-radius ceiling**，而不是把 `$3` 计划额度改成 `$10`。这两值职责不同，
+  当前 request 的表达可接受。账户上其它并发消费会占用同一 ceiling、可能让本 run 提前耗尽余量，但不会扩大
+  上限；本轮无需改成 key/project scope。
+
+#### 第二层 approval：字段归属通过，值待 Hat B
+
+- `provider_cap_attestation` 是跑前外部事实的正确主落点。Hat B 应填有限正数 `cap_usd <= 10`、`scope=account`、
+  `cap_configured=true`、操作员与带时区观察时间。
+- `evidence_ref`/截图 hash 对 self-authorized T0–T2 可选：它增强事后审计，但 provider 状态可在截图后改变，
+  不能替代操作员 attestation。本轮不把 evidence hash 设为 go 条件。
+
+#### 第三层 validator：已接线，但 fail-closed 尚未成立（R4-D2）
+
+- 缺 attestation、false、普通非正数、普通超 $10、scope mismatch、空必填字段的回归都正确。
+- 具体错误输入：Python JSON loader 接受的 `NaN` 会成为 float；`cap <= 0` 与 `cap > 10` 对 NaN 都为 false，
+  所以 `cap_usd=NaN` 通过。同时 `observed_at="not-a-time"` 只因非空也通过。我独立调用函数得到 success dict，
+  其中 cap 原样为 `nan`。
+- 修复：对 request ceiling 与 approval cap 都要求 `numbers.Real`、非 bool、`math.isfinite()`、正数；required
+  rule 缺/非法 ceiling 本身也应拒绝。用 `_utc()` 严格解析 `observed_at` 并拒未来时间；把 rule provider 与
+  runtime/approval provider 作规范化一致性比较。后两项不会要求程序读取 OpenRouter 后台，仍只是核 attestation
+  schema 与适用对象。
+- 挑战纪律？：否。
+
+#### 第四层 receipt：未实现（R4-C1）
+
+- `validate_execution_authorization()` 返回的 auth meta 在 line 560 含 `provider_budget_cap`，confirm artifact
+  通过 `out["meta"].update(auth_meta)` 会保留它。
+- 但 `write_run_receipt()` 手工构造的字段截止于 artifact/hash/commit/status/time/verdict，没有
+  `"provider_budget_cap": meta.get("provider_budget_cap")`。因此 receipt 不会回显 cap；prereg §7/§10、005
+  supersession reason 与 brief §6 的“四层”声明均强于实际输出。
+- 最小修复是增加该键并补 receipt shape 回归。receipt 仍只是运行后回显，不承担跑前授权；其缺失不绕过 API
+  前的 gate，但破坏已冻结的审计链承诺，故在本轮明确以四层闭合为 go 条件时仍阻塞 Hat B。
+- 挑战纪律？：否。
+
+### R3-D3 — 通过
+
+- prereg 已删除基于时延冒充 token×price 的 `<$1` 预测，保留 `$3` 计划额度/no-live-metering 的诚实边界。
+- 全 PATH 环境实跑为 **290 passed**；uv 缺失时才是 289 passed + 1 skipped。self-test 仍为 196。
+
+### Request 005 与离线验证
+
+- `execution_request_hash` 独立复算为
+  `008e09c3a95ac475b8028952e896f6da8be60adad5169bd2ad146a48750257a5`，与 005 一致。
+- 9 项 materials SHA-256 全部匹配；顶层/runtime materials 相同；按 confirm 路径重建 runtime
+  `runtime_exact_match=True`。
+- 当前无 `PYTHONPATH`/`PYTHONHOME`/uv target override；`verify_env_matches_lock()` 端到端返回 project `.venv`
+  prefix、agentdojo 0.1.35/openai 2.45.0、uv sync rc=0。因此 R4-D1 是授权门没有钉住未来 Hat B invocation，
+  不是当前环境已经不同步。
+- 请求链 001→002→003→004→005 完整；005 由 Hat A commit `08f8aeb` 冻结，之后只有 round-4 brief/report 提交。
+- `.venv/bin/python -m pytest src/tests -q`：**290 passed**。
+- `.venv/bin/python scripts/run_calendar_probe.py --self-test`：**196** 项全部通过。
+
+### Round-4 Go 条件
+
+1. 闭合 R4-D1：显式钉 uv 子进程的 project 与 target env，不继承可重定向选择的 uv 环境变量；处理或诚实声明
+   `PYTHONPATH`/import provenance 边界，并加 override 反例回归。
+2. 闭合 R4-D2：有限数检查、严格 `observed_at`、required rule 自身 fail-closed，并校验 cap rule 适用于实际
+   provider。
+3. 修 R4-C1：receipt 真正回显 `provider_budget_cap`，补 shape 测试。
+4. 上述均改变 governed authorization/prereg 字节，故 supersede 005、重做 Hat A 006；新 hash 复核后再签 Hat B。
 
 ## Round 3 复核（Hat A 004 / `9cf4b4a…`）
 

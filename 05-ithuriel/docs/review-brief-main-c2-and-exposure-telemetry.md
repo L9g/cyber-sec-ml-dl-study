@@ -178,3 +178,35 @@ Hat B。**⚠ 我在写这份 round-2 前先自查了你留的三个点，D1 因
 自查：新 request hash `afdb5ff…` 已 `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
 **逐字节相等**（含 `environment`）、9 项材料 sha 与文件一致、请求链 001→002→003 完整。pytest **276**、
 self-test **196**。
+
+---
+
+## 5. Round 3（2026-07-24）：round-2 的 3 条 NO-GO 已修，请复核新 hash
+
+**你 round-2（`reports/partner-review-2026-07-24-main-c2.md` Round 2 段）判 003 NO-GO，3 条我全部认同并已修**
+（fix commit `c7f6a78`；新 Hat A **004** = commit `3e6c4df`，请求文件
+`docs/trial/execution-request-exfil-email-c2-main-004.json`，hash `9cf4b4a…`，请求链 001→002→003→004 见
+prereg §11）。C1 切点、第一轮 D2/D3/D4 你已判通过，本轮只动 R2 三条：
+
+- **R2-D1（D1 preflight 未闭合）**：①缺 pin 静默通过——`_verify_pinned_versions` 现强制 `_EXPECTED_PINS`
+  （agentdojo/openai）全解析到，否则 fail-closed（你给的反例「只返回 agentdojo pin」现抛
+  `未解析到必需 pin`）。②只查两个包、transitive 漂移绕过——加 `_verify_lock_sync`，借
+  **`uv sync --check --frozen --offline --inexact`**（读-only）校验完整必需依赖同步，缺 uv fail-closed；
+  已实测当前 env `returncode=0`。③收窄声明：§10 与 request 明确「版本级同步、非字节级完整性」，不再写
+  「任意改 .venv 都 lapsed」。请核：uv 委托是否是你 R2-D1 建议的可接受实现、`_lock_versions` 块扫描对
+  extras/多来源/marker 分叉是否还有你担心的漏解析、以及 fail-closed 覆盖是否完整（四个计费入口 authorization
+  后、reachability/API 前都调）。
+- **R2-C1（分层聚合路径 request 误称）**：单臂聚合抽入 `c2.py:arm_aggregate`（纯函数），request 的
+  `decision_rule.descriptive_layers_aggregation` 改为准确路径 **`aggregate[<arm>].descriptive_layers`**；
+  补 `arm_aggregate` **artifact 形状**测试（钉住分层落在 arm 层、B/C/A 与三层不互顶替）。旧 `c2.arms[*]`
+  只在 supersession_reason 历史里出现。
+- **R2-D2（G4 计划额度未进冻结）**：prereg §7 改「$3 = 批准的计划额度、非代码级硬熔断（云端硬 cap 需实时
+  读余额、做不到）；硬熔断 = 135 次 hash-bound cap + 操作员在 OpenRouter 设的 consumption cap」；
+  `execution_runtime` 错误信息改「批准额度」；request `known_fidelity_gaps` 加预算项 + D1 版本级边界项。
+  跑前操作员设 OpenRouter cap 这步，我打算在 approval 里加一条操作员 attestation 字段（你 R2-D2 建议的），
+  请确认这样是否足够、还是要落进 request/receipt。**诚实改名** `post_action_marker_echo` →
+  `post_cutoff_marker_observed`（你 C1 专项指出：切点后含 marker 不保证一定是动作回显）。
+
+自查：新 request hash `9cf4b4a…` `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
+**逐字节相等**、9 项材料 sha 一致、请求链 001→002→003→004 完整。pytest **279**（+1 skip=无 uv 时跳过
+uv-sync 测试）、self-test **196**；`verify_env_matches_lock()` 端到端在真实 uv 下返回 pinned+lock_sync+boundary。

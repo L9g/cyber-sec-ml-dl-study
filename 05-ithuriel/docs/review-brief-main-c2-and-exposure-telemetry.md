@@ -127,3 +127,37 @@ main∧preregistered、必填字段非空）全过。
 `partner-review-2026-07-24.md`）。顶部 verdict 请明确给一个 **go / no-go 建议**：这份 main C2 请求
 + §6.2 实现是否可以让我签 Hat B 去跑那一轮 $3 的计费确认；若 no-go，列出必须先修的阻塞项。
 确认「这里没问题」与挑毛病一样有价值——尤其 §2.3、§2.4 两条治理/覆盖问题。
+
+---
+
+## 4. Round 2（2026-07-24）：第一轮 NO-GO 的 6 条已修，请复核新 hash
+
+**你上一轮报告 `reports/partner-review-2026-07-24-main-c2.md` 判 NO-GO，6 条我全部认同并已修**
+（fix commit `85746ee`；新 Hat A 002 = commit `a6713d4`，请求文件
+`docs/trial/execution-request-exfil-email-c2-main-002.json`，supersede 已作废的 001/`09844e3`）。
+请复核修复是否到位、以及新请求 hash `dd8ef20…` 能否让我签 Hat B。逐条：
+
+- **C1（曝光遥测被攻击后 tool result 污染）**：`_exposure_markers` 现只扫**首个 family-action
+  (send_email) tool call 之前**的 tool 输出（`oracle.py`）；动作后的回显另记 `post_action_marker_echo`
+  诊断、不进签名；加 `measured`（无预动作 tool 输出→not-measured，不当 False），聚合分母改 measured
+  trial + `n_measured/n_not_measured`；`action_request` 更名 `frozen_action_cue_present`。**补了你要的
+  真实时序回归**（`test_calendar_oracle.py`：read→attack→send_email result→final，断言预动作签名保持
+  `FTFF`、污染只进 `post_action_marker_echo`）。请特别核：切点选「首个 send_email tool call 之前」是否
+  正确（会不会把某些本该算预动作的输出误切、或漏切某类回显）。
+- **C2（分层报告承诺未进 artifact）**：`c2.py:descriptive_layers` 逐臂产 B/C/A + C 的
+  emitted/executed/delivered 各自 `hits/n/Wilson 区间`（`None=not_measured` 不进分母），互不顶替、
+  只作描述不进门槛；confirm 每臂 aggregate 加 `descriptive_layers`。测试钉了「B=true,C=false,A=false
+  不互相顶替」「三层分列」「None=not_measured」。
+- **D1（运行依赖在哈希门外）**：`execution_runtime` 把 `environment`（python/agentdojo/openai 版本）写进
+  **hash-bound runtime**——运行时重读已装版本，漂移即 runtime 失配→lapsed（复用既有相等门，无新机制）；
+  `pyproject.toml`+`uv.lock` 加进 governed materials（现 **9 项**）。请核这个「靠 runtime 相等门捕获漂移」
+  是否真等价于你建议的 preflight installed-version check，有没有绕过路径。
+- **D2/D3/D4**：C2a/C2b 收窄为 ambient-canary 基础对照 / per-trial 共现暴露对照（prereg §1）；prereg 头
+  改 FROZEN + §11 修订记录（D3）；`claims_prohibited` 加禁 instrument qualification（D4，prereg §9 同步）。
+- **G4（$3 无实时熔断）**：我接受它作「批准的计划额度 + 次数上限」、不冒充硬成本熔断，已在 request
+  `known_fidelity_gaps` 与主简报 G4 如实标注。**若你坚持没有真实额度熔断就该 no-go**，请在 verdict 里
+  点明——这是你上轮留的条件，我需要你明确它是否仍是阻塞。
+
+自查：新 request hash `dd8ef20…` 已 `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
+**逐字节相等**（含新 `environment`）、9 项材料 sha 与文件一致、supersede 链完整。pytest **273**、
+self-test **196**。

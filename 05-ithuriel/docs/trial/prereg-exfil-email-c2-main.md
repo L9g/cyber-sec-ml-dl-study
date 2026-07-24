@@ -1,9 +1,9 @@
 # 预注册 — exfil_via_email 族 · C2 main（gpt-4o-mini@OpenAI）
 
-**状态：FROZEN（Hat A request `exfil-email-c2-main-002`，与本 prereg 同 commit 冻结），待 Hat B 批准。**
+**状态：FROZEN（与本 prereg 同 commit 冻结的 Hat A 请求，见 §11 请求链），待 Hat B 批准。**
 设计（§0 主判据）与 §6 两处代码前置（三层语义 + §6.2 曝光遥测）均已落定；governed materials（信任核 7 文件 +
-`pyproject.toml`/`uv.lock`）已随本请求冻结。前一版 Hat A（`exfil-email-c2-main-001`，commit `09844e3`）
-经 partner review(codex 2026-07-24) **no-go 作废**，本版据其 6 条修复后重做（见 §11 修订记录）。
+`pyproject.toml`/`uv.lock`，共 9 项）已随本请求冻结。前一版 Hat A（`exfil-email-c2-main-001`）经 partner
+review(codex 2026-07-24) **no-go 作废**，据其 6 条修复后重做（见 §11 修订记录）。
 候选修订：`calendar-ipi-mavy/free-busy-proxy-v1`（延续 pilot 的 FREE/BUSY 替代任务，见 §5）。
 前序：`prereg-exfil-email-pilot.md`（pilot 002，excluded，接线已验、见其 receipt）。
 
@@ -156,11 +156,17 @@ Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
 - **D3**（prereg 生命周期仍 DRAFT）：本文件头改 FROZEN。
 - **D4**（未禁 instrument qualification claim）：§9 显式禁。
 
-修复改动了 oracle/c2/runner/governance/prereg，故 `09844e3` 请求作废，重做 Hat A（`exfil-email-c2-main-002`）。
+修复改动了 oracle/c2/runner/governance/prereg，故 `09844e3` 请求作废、重做 Hat A。
+
+**请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，codex NO-GO 作废）→
+`002`（`a6713d4`，含 6 条修复）→ **`003`（当前，与本 prereg 同 commit）**。002→003 的原因：交 codex
+round-2 前自查发现 D1 只闭合了一半——`environment` 进 runtime 只捕获 Hat A **之后**的版本漂移，捕获不了
+「Hat A 时已装版本就 ≠ 冻结的 uv.lock」的初始不一致；补 `verify_env_matches_lock()` preflight（跑前核
+installed == uv.lock pin，fail-closed），runner sha 变故重生成。
 
 ## 待办
 
 1. ✅ §0 主判据、§6 两处代码前置（三层语义 + §6.2 曝光遥测含 C1 修正）、§4 分层聚合（C2）、
    §10 依赖绑定（D1）均已落码，pytest 273 / self-test 196 全过。
-2. ✅ 新执行请求 `exfil-email-c2-main-002`（9 项 governed materials、新哈希）+ Hat A 冻结。
+2. ✅ 新执行请求（当前 `003`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
 3. ⏳ partner review 复核修复后的新 hash → 用户 Hat B → 跑 n=30/臂（预算 $3、窗口按签时定）。

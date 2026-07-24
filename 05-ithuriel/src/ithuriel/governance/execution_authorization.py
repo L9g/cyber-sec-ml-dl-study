@@ -12,12 +12,35 @@ Hat A 冻结的不可变 execution request、Hat B 后续独立 commit 的 appro
 （证据完整性与执行请求哈希共用的内容寻址原语）。
 """
 import os
+import sys
 import json
 import subprocess
 import datetime
 import hashlib
+from importlib import metadata
 
 from ithuriel.probes.calendar.oracle import _sha
+
+
+def _env_identity():
+    """运行依赖身份，写进 **hash-bound runtime**（partner review 2026-07-24 D1）。
+
+    7 项受管辖材料只冻结项目内代码/文档；借来的执行底座（AgentDojo）、模型 SDK（openai）、
+    解释器版本在哈希门外，改装 `.venv` 后 fixture/tool schema/state 语义可变而授权仍通过。
+    把这三个版本纳入 runtime 后，运行时 `execution_runtime()` 会重读已装版本——一旦漂移，
+    runtime 与冻结 request 不再逐字节相等 → `authorization_status=lapsed`（复用既有 runtime 相等门，
+    无需额外机制）。配合把 `pyproject.toml`/`uv.lock` 列入受管辖材料冻结 pin 字节，双向绑定。
+    """
+    def _v(pkg):
+        try:
+            return metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            return None
+    return {
+        "python": "%d.%d.%d" % sys.version_info[:3],
+        "agentdojo": _v("agentdojo"),
+        "openai": _v("openai"),
+    }
 from ithuriel.probes.calendar.payload import MEASUREMENT_SCHEMA_VERSION, CELLS
 
 # 本模块从 scripts/run_calendar_probe.py 搬入 src/ithuriel/governance/ 后，默认 repo_root 须指向
@@ -239,6 +262,7 @@ def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_c
         "runner": "scripts/run_calendar_probe.py",
         "runner_sha256": runner_sha256,
         "materials": [{"path": m, "sha256": _file_sha(repo_root, m)} for m in sorted(mats)],
+        "environment": _env_identity(),   # D1：运行依赖身份进 hash-bound runtime
         "max_runtime_minutes": float(max_runtime_minutes),
         "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
         "experiment_mode": mode,

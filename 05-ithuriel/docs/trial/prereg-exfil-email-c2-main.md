@@ -108,7 +108,7 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
    判别位——这落地了 partner review §6 指出「negative_plain 在上下文层并非无 marker」的纠正（并据此
    收窄 §1 的 C2a/C2b 曝光语义）。
 
-②落码后已跑全量 pytest（290，全 PATH；无 uv 时 289+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
+②落码后已跑全量 pytest（299，全 PATH；无 uv 时 298+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
 
 ## 7. 样本与预算
 
@@ -145,13 +145,15 @@ instrument qualification / 重复运行稳定性 / probe readiness**——那是
 Hat A（冻结本预注册 + **9 项 governed materials** = 信任核 7 文件 + `pyproject.toml` + `uv.lock`，含
 修复后的新哈希）→ Hat B 用户本人独立 commit → 运行 → receipt。**运行依赖身份**（Python/AgentDojo/openai
 版本）写进 hash-bound runtime（D1）：三个关键版本 Hat A 后漂移 → runtime 失配 → lapsed；跑前
-`verify_env_matches_lock()` preflight **三层**（R3-D1）：⓪`realpath(sys.prefix)==repo/.venv`（绑定 uv 所核
-环境与实际解释器）① 关键 pin installed==uv.lock（缺 pin/重复块 fail-closed）② 借 `uv --no-cache sync
---check --frozen --offline --inexact` 校验完整必需依赖 closure（含 transitive）。**边界（务必守）**：**版本级**
-同步校验，**不**证明同版本包字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；self-authorized
-T0–T2 可接受。**外部 provider budget cap 是可执行契约（R3-D2）**：request 定规则、approval 作跑前
-attestation、validator fail-closed 比对、receipt 回显（见 §7）。Story 作 provenance、不进哈希门。
-不与 additive/aug/pilot 池化。
+`verify_env_matches_lock()` preflight **三层**（R3-D1/R4-D1）：⓪`realpath(sys.prefix)==repo/.venv` **且拒非空
+PYTHONPATH/PYTHONHOME**（绑定 uv 所核环境与实际解释器、护 import provenance）① 关键 pin installed==uv.lock
+（tomllib，缺 pin/重复块 fail-closed）② 借 `uv --no-cache --no-config --project <root> sync --check --frozen
+--offline --inexact` 校验完整必需依赖 closure（**子进程强制 `UV_PROJECT_ENVIRONMENT=repo/.venv`、清
+`UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`**，防 uv 被继承环境变量重定向到另一环境）。**边界（务必守）**：
+**版本级**同步校验，**不**证明同版本包字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；
+self-authorized T0–T2 可接受。**外部 provider budget cap 是可执行契约（R3-D2/R4-D2）**：request 定规则、
+approval 作跑前 attestation、validator **fail-closed 比对**（有限数/scope/provider 一致/observed_at 严格解析且
+非未来）、receipt 回显（R4-C1，见 §7）。Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
 
 ---
 
@@ -192,14 +194,24 @@ Round 2 段）：
   `_enforce_provider_budget_cap` fail-closed 比对（缺/未配置/超上限/scope 不符/缺必填键均拒）；auth_meta→receipt 回显。
 - **R3-D3**（账面）：删无 usage/价格证据的 `<$1` 估计；测试计数据实（`290 passed` 全 PATH，无 uv 时 `289+1 skip`）。
 
+**codex round-4 再判 NO-GO（2 高 1 中），已修**（Round 4 段）：
+- **R4-D1**（⓪ 只核 sys.prefix，uv 目标仍被 UV_* 环境变量重定向）：`_verify_lock_sync` 给 uv 子进程显式受控
+  env（强制 `UV_PROJECT_ENVIRONMENT=repo/.venv`、清 `UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`）+ `--no-config`
+  + 绝对 `--project`；`_verify_running_interpreter` 加拒非空 PYTHONPATH/PYTHONHOME（护 import provenance）。
+- **R4-D2**（validator fail-closed 不完整：NaN cap 绕过比较、observed_at 只核非空）：`_finite_positive` 拒
+  NaN/inf/bool/非数（比 cap 与 ceiling）；observed_at 严格 `_utc` 解析 + 拒未来；rule provider 与 approval
+  provider 规范化一致。
+- **R4-C1**（receipt 未回显）：`write_run_receipt` 补 `provider_budget_cap`/`approved_budget_cap_usd`/
+  `budget_enforcement`，兑现四层回显。
+
 **请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，round-1 NO-GO）→ `002`
 （`a6713d4`，6 修）→ `003`（`e5ee570`，自查 D1 preflight）→ `004`（`3e6c4df`，round-2 三修）→
-**`005`（当前，与本 prereg 同 commit，round-3 三修）**。
+`005`（`08f8aeb`，round-3 三修）→ **`006`（当前，与本 prereg 同 commit，round-4 三修）**。
 
 ## 待办
 
 1. ✅ §0 主判据、§6 代码前置、§4 分层聚合、§7/§10 预算与依赖绑定 + 环境同一性 + provider-cap 契约
-   （R1 6 条 + R2 3 条 + R3 3 条）均已落码，pytest **290**（全 PATH；无 uv 时 289+1 skip）/ self-test 196 全过。
-2. ✅ 新执行请求（当前 `005`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
-3. ⏳ partner review round-4 复核新 hash → 用户 Hat B（含 provider_cap_attestation）→ 跑 n=30/臂
+   （R1 6 + R2 3 + R3 3 + R4 3 条）均已落码，pytest **299**（全 PATH；无 uv 时 298+1 skip）/ self-test 196 全过。
+2. ✅ 新执行请求（当前 `006`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
+3. ⏳ partner review round-5 复核新 hash → 用户 Hat B（含 provider_cap_attestation）→ 跑 n=30/臂
    （计划额度 $3、跑前设 OpenRouter cap ≤ $10、窗口按签时定）。

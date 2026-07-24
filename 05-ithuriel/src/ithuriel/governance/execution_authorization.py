@@ -123,18 +123,20 @@ def _verify_lock_sync(repo_root):
     读-only：`uv --no-cache --no-config --project <root> sync --check --frozen --offline --inexact`
     （in-sync→exit 0；不改环境、不联网、不删多余包）。缺 uv 即 fail-closed。
 
-    **R4-D1：uv 的目标 env/project 会被继承的 `UV_*` 环境变量重定向**（`UV_PROJECT_ENVIRONMENT` 可让
-    uv 去核另一个干净环境而实际解释器已漂移）。故给子进程**显式受控 env**：强制 `UV_PROJECT_ENVIRONMENT`
-    = 已验证的 repo/.venv、清除 `UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`，并用绝对 `--project` +
-    `--no-config`，使 uv 所核环境机器可验证地就是实际解释器的 .venv（须先经 `_verify_running_interpreter`）。
+    **R4-D1 + R5-D1：uv 的目标 env/project/校验行为会被继承的 `UV_*` 环境变量重定向或削弱**——不只
+    `UV_PROJECT_ENVIRONMENT`（重定向环境），还有 `UV_ONLY_INSTALL_LOCAL=1`（让 uv 只校验 0 个远端依赖、
+    近乎空过、已复现绕过）等。故给子进程**清掉全部继承 `UV_*`（allowlist：只留我们显式设的）**，再强制
+    `UV_PROJECT_ENVIRONMENT`=已验证的 repo/.venv，并用绝对 `--project` + `--no-config`，使 uv 所核环境与
+    校验行为都机器可验证地钉死（须先经 `_verify_running_interpreter`）。**逐个 blocklist 会漏新变量，故用
+    allowlist。**
     """
     uv = shutil.which("uv")
     if not uv:
         raise AuthorizationError("uv 不在 PATH（D1 fail-closed：无法校验完整依赖同步）")
     venv = os.path.realpath(os.path.join(repo_root, ".venv"))
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("UV_PROJECT", "UV_WORKING_DIR", "UV_PYTHON")}
-    env["UV_PROJECT_ENVIRONMENT"] = venv   # 覆盖任何继承值，钉死 uv 所核环境
+    # allowlist：清掉**全部**继承 UV_*（防 UV_ONLY_INSTALL_LOCAL 等削弱校验的变量），只显式设 target env
+    env = {k: v for k, v in os.environ.items() if not k.startswith("UV_")}
+    env["UV_PROJECT_ENVIRONMENT"] = venv   # 唯一显式保留：钉死 uv 所核环境
     cmd = [uv, "--no-cache", "--no-config", "--project", os.path.abspath(repo_root),
            "sync", "--check", "--frozen", "--offline", "--inexact"]
     proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, env=env)
@@ -303,6 +305,10 @@ def write_run_receipt(artifact_path, meta, primary, started_at, out_dir="docs/tr
         "approved_budget_cap_usd": meta.get("approved_budget_cap_usd"),
         "budget_enforcement": meta.get("budget_enforcement"),
         "provider_budget_cap": meta.get("provider_budget_cap"),
+        # R5：直接回显 deadline / run 状态（此前只经 artifact SHA 间接锚定；缺则 None）。
+        "deadline_utc": meta.get("deadline_utc"),
+        "run_status": meta.get("run_status"),
+        "termination_reason": meta.get("termination_reason"),
     }
     p = os.path.join(out_dir, os.path.basename(artifact_path).replace(".json", ".receipt.json"))
     with open(p, "w", encoding="utf-8") as f:

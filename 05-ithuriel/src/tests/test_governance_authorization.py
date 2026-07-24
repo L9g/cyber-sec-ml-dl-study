@@ -159,6 +159,31 @@ def test_lock_sync_ignores_malicious_uv_project_environment_override(monkeypatch
     assert out["pinned_project_environment"] == os.path.realpath(os.path.join(_PROJECT_ROOT, ".venv"))
 
 
+def test_lock_sync_strips_all_inherited_uv_vars_allowlist(monkeypatch):
+    # ⭐ R5-D1：UV_ONLY_INSTALL_LOCAL=1 让 uv 只校验 0 个远端依赖、近乎空过（已复现绕过）。受控 env 必须
+    # 清掉**全部**继承 UV_*（allowlist：逐个 blocklist 会漏新变量），只留显式设的 UV_PROJECT_ENVIRONMENT。
+    monkeypatch.setenv("UV_ONLY_INSTALL_LOCAL", "1")
+    monkeypatch.setenv("UV_INDEX_URL", "http://evil")
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "/tmp/evil-inherited")
+    captured = {}
+
+    class _Proc:
+        returncode, stdout, stderr = 0, "", ""
+
+    def _fake_run(cmd, **kw):
+        captured["env"], captured["cmd"] = kw.get("env"), cmd
+        return _Proc()
+
+    monkeypatch.setattr(EA.shutil, "which", lambda _n: "/usr/bin/uv")
+    monkeypatch.setattr(EA.subprocess, "run", _fake_run)
+    EA._verify_lock_sync(_PROJECT_ROOT)
+    uv_keys = {k for k in captured["env"] if k.startswith("UV_")}
+    assert uv_keys == {"UV_PROJECT_ENVIRONMENT"}          # 全部继承 UV_* 被清、只留显式一个
+    assert captured["env"]["UV_PROJECT_ENVIRONMENT"] == \
+        os.path.realpath(os.path.join(_PROJECT_ROOT, ".venv"))
+    assert "--no-config" in captured["cmd"] and "--project" in captured["cmd"]
+
+
 # ---------------- R3-D2 / R4-D2：provider budget cap 可执行契约 ----------------
 def _cap_rule(**over):
     r = {"provider": "OpenRouter", "required": True, "cap_scope": "account",
@@ -243,13 +268,16 @@ def test_receipt_echoes_provider_budget_cap(tmp_path):
     meta = {"execution_request_hash": "h", "request_commit": "c1", "approval_commit": "c2",
             "authorization_status": "approved", "approved_budget_cap_usd": 3.0,
             "budget_enforcement": "hash-bound preflight plus max_trials; no live USD metering",
-            "provider_budget_cap": {"provider": "OpenRouter", "cap_usd": 8, "scope": "account"}}
+            "provider_budget_cap": {"provider": "OpenRouter", "cap_usd": 8, "scope": "account"},
+            "deadline_utc": "2026-07-24T02:00:00Z", "run_status": "completed"}
     p = EA.write_run_receipt(str(art), meta, {"verdict": "c2_pass"}, "2026-07-24T00:00:00Z",
                              out_dir=str(tmp_path / "receipts"))
     import json as _json
     rec = _json.loads(open(p, encoding="utf-8").read())
     assert rec["provider_budget_cap"] == meta["provider_budget_cap"]
     assert rec["approved_budget_cap_usd"] == 3.0 and "no live USD metering" in rec["budget_enforcement"]
+    assert rec["deadline_utc"] == "2026-07-24T02:00:00Z" and rec["run_status"] == "completed"
+    assert rec["termination_reason"] is None   # 缺则 None、不臆造
 
 
 def test_provider_cap_not_required_is_backward_compatible():

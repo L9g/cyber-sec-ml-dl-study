@@ -108,7 +108,7 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
    判别位——这落地了 partner review §6 指出「negative_plain 在上下文层并非无 marker」的纠正（并据此
    收窄 §1 的 C2a/C2b 曝光语义）。
 
-②落码后已跑全量 pytest（299，全 PATH；无 uv 时 298+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
+②落码后已跑全量 pytest（300，全 PATH；无 uv 时 299+1 skip）+ self-test（196）+ 离线签名验证；三族 reachability 待 real_run 硬门（跑时验），已 freeze。
 
 ## 7. 样本与预算
 
@@ -116,10 +116,11 @@ read_only：`Am I free …? FREE/BUSY`。utility ⇔ 最终文本 == `FREE` 且�
 30 个可解释仍是 30（可解释≠命中），cap 45 应够采满可解释数。全新样本、成对随机交错、per-trial nonce。
 target `openai/gpt-4o-mini` pin `OpenAI`（延续 pilot，已知会发信）。phase=main、`analysis_eligibility=preregistered`。
 
-**预算语义（partner review 2026-07-24 R2-D2 + R3-D2）**：`budget_cap_usd=$3` 是**批准的计划额度、非
-代码级硬成本熔断**——云端模型的硬 cap 需实时读代理商余额/额度，代码侧做不到，只能事前估算。硬熔断
-由两处承担：**135 次 hash-bound attempt cap**（确定性 blast-radius 界）+ **跑前操作员在 OpenRouter 设的
-consumption cap**（provider 侧真实额度熔断）。**该 provider cap 是可执行契约、非自由声明（R3-D2）**：
+**预算语义（partner review 2026-07-24 R2-D2 + R3-D2 + round-5 收窄）**：`budget_cap_usd=$3` 是**批准的
+计划额度、非代码级硬成本熔断**——云端模型的硬 cap 需实时读代理商余额/额度，代码侧做不到，只能事前估算。
+blast-radius 由两处约束：**135 个 hash-bound trial-attempt 上限**（确定性；⚠**是 trial 尝试数、不是
+provider API 调用数、也不是成本上限**——单个 trial 可产生多轮模型请求，SDK 还可能 retry）+ **跑前操作员在
+OpenRouter 设的 account consumption cap**（provider 侧真实额度熔断，是唯一的**真·成本硬停**）。**该 provider cap 是可执行契约、非自由声明（R3-D2）**：
 request `external_budget_control` 冻结 required/最大允许额度/scope/所需 attestation 字段，approval 填跑前
 attestation，**validator fail-closed 强制比对**，receipt 回显。artifact 如实标 `budget_enforcement=no live
 USD metering`。（不写具体成本估计——pilot 只存了时延、未存 token usage×价格快照，故不据它下 `<$1` 断言。）
@@ -148,12 +149,21 @@ Hat A（冻结本预注册 + **9 项 governed materials** = 信任核 7 文件 +
 `verify_env_matches_lock()` preflight **三层**（R3-D1/R4-D1）：⓪`realpath(sys.prefix)==repo/.venv` **且拒非空
 PYTHONPATH/PYTHONHOME**（绑定 uv 所核环境与实际解释器、护 import provenance）① 关键 pin installed==uv.lock
 （tomllib，缺 pin/重复块 fail-closed）② 借 `uv --no-cache --no-config --project <root> sync --check --frozen
---offline --inexact` 校验完整必需依赖 closure（**子进程强制 `UV_PROJECT_ENVIRONMENT=repo/.venv`、清
-`UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`**，防 uv 被继承环境变量重定向到另一环境）。**边界（务必守）**：
-**版本级**同步校验，**不**证明同版本包字节未被就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；
-self-authorized T0–T2 可接受。**外部 provider budget cap 是可执行契约（R3-D2/R4-D2）**：request 定规则、
-approval 作跑前 attestation、validator **fail-closed 比对**（有限数/scope/provider 一致/observed_at 严格解析且
-非未来）、receipt 回显（R4-C1，见 §7）。Story 作 provenance、不进哈希门。不与 additive/aug/pilot 池化。
+--offline --inexact` 校验完整必需依赖 closure（**子进程 allowlist 清掉全部继承 `UV_*`、只显式设
+`UV_PROJECT_ENVIRONMENT=repo/.venv`**，防 uv 被继承环境变量重定向或削弱校验——含 `UV_ONLY_INSTALL_LOCAL=1`
+让 uv 近乎空过的已复现绕过，R5-D1）。**边界（务必守）**：**版本级**同步校验，**不**证明同版本包字节未被
+就地篡改，故**不声称「任意改装 `.venv` 都会 lapsed」**；self-authorized T0–T2 可接受。**外部 provider budget
+cap 是可执行契约（R3-D2/R4-D2）**：request 定规则、approval 作跑前 attestation、validator **fail-closed 比对**
+（有限数/scope/provider 一致/observed_at 严格解析且非未来）、receipt 回显（R4-C1，见 §7）。Story 作
+provenance、不进哈希门。不与 additive/aug/pilot 池化。
+
+**授权门管什么、不管什么（round-5 收窄）**：门 fail-closed 保证的是**字节/顺序/环境/预算契约**（三方哈希、
+commit 顺序、runtime 逐字节相等、依赖同步、provider-cap 比对）。以下是**程序外纪律、门证不了**，如实归为
+procedural policy：**「AI 不得代签」**——门只验 `approved_by` 非空 + 角色字段 + commit 顺序，**无法鉴别提交者
+是否真是人**，须靠 ADR-0022 流程约束（用户本人跑 Hat B commit）。**威胁模型与 claim scope 声明**：包内篡改 /
+`sitecustomize` / 错误 attestation **确实可能改变结果**，只是被明确排除在本次 **self-authorized T0–T2** 威胁模型
+之外。准确表述：**在已声明的威胁模型与 claim scope 内，没有剩余的、可信且未缓解的失败路径会系统性伪造本次
+C2 结论**（不等于「无任何理论上能改结果的路径」）。
 
 ---
 
@@ -204,14 +214,30 @@ Round 2 段）：
 - **R4-C1**（receipt 未回显）：`write_run_receipt` 补 `provider_budget_cap`/`approved_budget_cap_usd`/
   `budget_enforcement`，兑现四层回显。
 
+**round-5 收窄（用户复核，1 真门漏洞修 + 3 处诚实化 + 设停止线）**：
+- **R5-D1（真门漏洞，已修）**：`UV_ONLY_INSTALL_LOCAL=1` 让 uv 只校验 0 个远端依赖、近乎空过（已复现，
+  非理论边界）——R4-D1 逐个清 3 个 UV_* 是 blocklist、漏了它。修：改 **allowlist 清掉全部继承 `UV_*`**，
+  只显式设 `UV_PROJECT_ENVIRONMENT`。
+- **标签诚实化**（历史更正，非行为改动）：①「135 次调用/成本硬上限」→ **135 个 trial-attempt 上限**（单
+  trial 多轮请求 + SDK retry，非 API 调用数、非成本 cap；见 §7）②「AI 不得代签」= **procedural policy、门证不了**
+  （门只验 approved_by 非空 + 角色 + commit 顺序，鉴别不了提交者是否真人；见 §10）③剩余边界表述收窄为
+  **「在已声明威胁模型与 claim scope 内无可信未缓解路径系统性伪造结论」**，不再说「没有一条能改结果」（包内
+  篡改/sitecustomize/错误 attestation 确能改结果、只是排除在 T0–T2 威胁模型外；见 §10）。④receipt 顺手补
+  `deadline_utc`/`run_status`/`termination_reason` 直接回显（此前只经 artifact SHA 间接锚定）。
+- **⭐停止线（用户定）**：007 若 hash/runtime/materials + UV_ONLY_INSTALL_LOCAL 反例通过 → **GO**；
+  **不再**要求包字节哈希、可信时间戳、实时 USD meter、强制 evidence hash、Python `-I`。五轮成本是沉没成本、
+  不构成续修理由；但 R5-D1 这一处真绕过的边际收益明显 > 成本，故修。
+
 **请求链（ADR-0022，被拒/被 supersede 者保留作历史）**：`001`（`09844e3`，round-1 NO-GO）→ `002`
 （`a6713d4`，6 修）→ `003`（`e5ee570`，自查 D1 preflight）→ `004`（`3e6c4df`，round-2 三修）→
-`005`（`08f8aeb`，round-3 三修）→ **`006`（当前，与本 prereg 同 commit，round-4 三修）**。
+`005`（`08f8aeb`，round-3 三修）→ `006`（`4f186a5`，round-4 三修）→ **`007`（当前，与本 prereg 同 commit，
+round-5 R5-D1 + 诚实化）**。
 
 ## 待办
 
-1. ✅ §0 主判据、§6 代码前置、§4 分层聚合、§7/§10 预算与依赖绑定 + 环境同一性 + provider-cap 契约
-   （R1 6 + R2 3 + R3 3 + R4 3 条）均已落码，pytest **299**（全 PATH；无 uv 时 298+1 skip）/ self-test 196 全过。
-2. ✅ 新执行请求（当前 `006`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
-3. ⏳ partner review round-5 复核新 hash → 用户 Hat B（含 provider_cap_attestation）→ 跑 n=30/臂
-   （计划额度 $3、跑前设 OpenRouter cap ≤ $10、窗口按签时定）。
+1. ✅ §0 主判据、§6 代码前置、§4 分层聚合、§7/§10 预算与依赖绑定 + 环境同一性 + provider-cap 契约 +
+   R5-D1 allowlist（R1 6 + R2 3 + R3 3 + R4 3 + R5 1 条 + 诚实化）均已落码，pytest **300**（全 PATH；
+   无 uv 时 299+1 skip）/ self-test 196 全过。
+2. ✅ 新执行请求（当前 `007`，9 项 governed materials、新哈希，见 §11 请求链）+ Hat A 冻结。
+3. ⏳ **停止线**：codex round-5 spot-check（hash/runtime/materials + UV 反例）过 → 用户 Hat B（含
+   provider_cap_attestation）→ 跑 n=30/臂（计划额度 $3、跑前设 OpenRouter account cap ≤ $10、窗口按签时定）。

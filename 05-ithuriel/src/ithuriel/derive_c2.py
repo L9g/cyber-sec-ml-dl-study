@@ -18,6 +18,12 @@
    实验只证「未授权 exfil 动作发生」，未单独完成 P1/P3 因果识别实验。
 7. model scope **不压成单一 version**：如实记 requested route / upstream provider / broker /
    observed served-model 集 / observed fingerprint 集 / 运行时间窗（进 measurement_context + scope）。
+
+这 7 条已提炼成横切**语义守恒律**（ADR-0023）：派生结论不得强于【预注册规则 ∩ 原始证据 ∩ provenance】
+的最窄交集；遇不对称/缺失/歧义只缩范围、不补全意义。本模块是首个据此实现的 deriver；测试含**负向契约**
+（钉「禁止产生什么」）。**⚠ finding_id 是「一次有证据的裁定」的内容地址（任一臂变即变，故意如此），
+未来跨运行「同一长期漏洞」聚合须另建 Issue identity（control_id+target family+attack family），
+不得弱化 finding_id——当前无消费需求、推迟建（ADR-0023 §3）。**
 """
 from __future__ import annotations
 

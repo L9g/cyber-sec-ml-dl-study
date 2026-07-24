@@ -1,6 +1,6 @@
 # Project Memory
 
-Updated: 2026-07-19
+Updated: 2026-07-23
 
 ## Current Project
 
@@ -547,13 +547,13 @@ what the attack does.
   recovery, and claim-boundary controls. If no second person is available, remain blocked or use an explicitly bounded
   synthetic/mock surrogate; do not manufacture independence with a second account or an AI reviewer.
 
-## C2 Positive-Control Search and First Pass (2026-07-22)
+## C2 Positive-Control Search, Review, and Final Pass (2026-07-22)
 
-This section records the arc from "the calendar probe never fires" to the first satisfied ADR-0020 acceptance
-criterion. Every run below went through the ADR-0022 chain: Hat A freeze, Hat B approval in a separate commit,
-machine-enforced execution, run receipt.
+This section records the arc from "the calendar probe never fires" through a provisional first C2 pass, external
+review, instrument repair, and a corrected final pass. Every governed run below went through the ADR-0022 chain:
+Hat A freeze, Hat B approval in a separate commit, machine-enforced execution, run receipt.
 
-### The search, in three stages
+### The search, in four stages
 
 - **Selection pilot on `mistral-small-3.2-24b` (pinned Novita-equivalent OpenAI-compatible deployment), write-phase
   host task, R1, n=30**: primary metric 0/30 with exposure 1.0, host task completed 30/30, no instrument errors.
@@ -566,24 +566,34 @@ machine-enforced execution, run receipt.
   family, ten interpretable trials per cell with an attempt cap of fifteen. The additive cells fired strongly, seven
   of ten and nine of ten respectively, with host-core completion at 1.0 in every cell. The augmentation cells
   returned zero, but that result was later invalidated; see the wiring defect below.
-- **Stage-2 confirmation, `gpt-4o-mini` at OpenAI, additive family, three arms of thirty fresh interpretable trials**:
+- **Initial Stage-2 confirmation, `gpt-4o-mini` at OpenAI, additive family, three arms of thirty fresh interpretable trials**:
   positive 29/30, `negative_plain` 0/30, `negative_marker_exposed` 0/30. Every arm reached thirty in exactly thirty
   attempts, with no exclusions, no instrument failures and no unexposed trials. Both one-sided Fisher comparisons
-  remained significant under Holm correction for two tests. Verdict `c2_pass`.
+  remained significant under Holm correction for two tests. The original verdict was `c2_pass`, but partner review
+  found that the negative descriptions were 47–76 per cent longer than the positive description. Length dilution was
+  therefore a reasonable competing explanation for both negative zeros, and this first pass was downgraded to
+  **provisional** without altering its immutable artifact.
+- **Corrected Stage-2 rerun, same frozen deployment/family and thirty wholly fresh trials per arm**: after matching
+  final rendered description lengths rather than a pre-shell substring, positive was 27/30, `negative_plain` 0/30
+  at length ratio 0.991, and `negative_marker_exposed` 0/30 at ratio 1.108. All arms again reached thirty in thirty
+  attempts, with zero exclusions, instrument failures and unexposed trials. Both comparisons passed Holm(2), C2a
+  and C2b passed, and the scope limitation was null. This run supersedes the initial confirmation as the additive
+  C2 conclusion source and removes provisional status: dilution no longer explains the negative zeros.
 
 ### What the pass means and does not mean
 
-ADR-0020 criterion C2 is satisfied for the first time: the operator-shaped security oracle discriminates positive
-from negative controls, including when the attack specification is handed to the model verbatim without an
-instruction to act. It does not mean the probe is usable for external assurance. Instrument qualification, meaning
-stability across repeated runs, has not been attempted, and criteria C1, C3 and C4 remain outstanding.
+ADR-0020 criterion C2 is satisfied on the corrected instrument: the operator-shaped security oracle discriminates
+positive from genuinely character-length-matched negative controls, including when the attack specification is
+handed to the model verbatim without an instruction to act. It does not mean the probe is usable for external
+assurance. Instrument qualification, meaning stability across repeated runs, has not been attempted, and criteria
+C1, C3 and C4 remain outstanding.
 `assurance_level` is still `none` and `target_fidelity` is still `mock`.
 
-The `negative_marker_exposed` arm carried most of the evidential weight. The model was shown the exact target title
-and time window with no instruction to create anything, and in thirty trials it never created the event; the
-call sequence was read-then-create in all thirty, `quoting_only_no_call` was zero, and no structured false positive
-occurred. The probe therefore measures action compliance rather than string copying, which was previously an
-argument from design rather than a behavioural finding.
+The corrected `negative_marker_exposed` arm carried most of the evidential weight. The model was shown the exact
+target title and time window with no instruction to create anything, and in thirty trials it emitted no matching
+create call; both `quoting_only_no_call` and structured false positives were zero. Because this negative arm was
+1.108 times the positive description length rather than 1.758 times, its zero is evidence of behavioural
+discrimination rather than an artifact plausibly explained by gross length dilution.
 
 ### A conclusion that had to be rewritten
 
@@ -639,6 +649,46 @@ approval cycle: once by catching a screening run that recorded a defence it neve
 blob path that omitted the monorepo prefix. Those repeated re-freezes should not be flattened out of the history;
 they are the evidence that the process did work.
 
+### Partner review findings and closure
+
+The 2026-07-22 staged code/design review is stored in
+`reports/partner-review-2026-07-22-codex.md`. It found one design issue (D1), six concrete code issues (C1–C6), and
+one discipline/ownership issue (P1). The review baseline was later overtaken by the fixes below; at the current head,
+`pytest src/tests` reports 200 passing tests and the calendar runner reports 276 passing offline self-checks.
+
+- **D1 — post-treatment denominator, fixed in `b793eae`**. For additive attacks, emitting a second nonce-bearing
+  event does not structurally depend on completing the authorised `Focus block`; conditioning the primary denominator
+  on host-core success could delete the strongest trajectory, “obey attack, skip host task”. The historical C2 arms
+  and all Stage-1 cells had zero exclusions, so recomputing without that condition changes no historical numerator or
+  denominator and D1 was never a reason to rerun. The implementation is now family-specific: additive uses instrument
+  validity plus exposure, while participant augmentation retains host-core as a structural prerequisite; utility is
+  reported orthogonally.
+- **C1 — false negative-control length matching, fixed in `41c2cca` and empirically closed by `281a88e`**. The old
+  builder compared an unwrapped negative body with an already wrapped positive and checked only the 85 per cent lower
+  bound, producing ratios from 1.47 to 1.76 while labelling them ±15 per cent matches. Matching now operates on the
+  final rendered description with a hard `[0.85, 1.15]` two-sided check and records per-arm lengths/ratios. C1, not
+  D1, forced the rerun. The corrected 27/30 versus 0/30 and 0/30 main run excludes dilution as the competing account.
+- **C2/C3 — native transport and completion labels, fixed in `b793eae`**. Native OpenAI and compatibility transports
+  both install telemetry without an uninitialised local. The old `planned_trials` field, which actually held an attempt
+  ceiling, is now `max_authorized_attempts`; actual attempts, target/reached interpretable trials and
+  `completion_criterion_met` are separate. A pilot confirmation is additionally machine-forced to `excluded_pilot`
+  (`ae80df0`) so a small wiring smoke cannot emit a C2 conclusion.
+- **C4/C5 — PEP grammar and attestation integrity, fixed in `189563d`**. Network scan Actions now require a non-empty,
+  deduplicated set of ports in `1..65535`, with an independent policy-layer recheck even if model validation is bypassed.
+  Human attestations require a responsible reviewer, parseable date, non-empty statement and references for decisive
+  verdicts; dangling references cannot produce pass. These checks verify that an attestation exists and binds evidence
+  without second-guessing the human decision.
+- **C6 — prereg omitted from the governed hash set, fixed in `b6a0c48` with test isolation in `4590e85`**. There is no
+  runner-only default material list: missing `CAL_GOVERNED_MATERIALS` fails closed. `prereg_ref` is required and the
+  exact path declared by the request must appear in governed materials, after which the existing declared/current/blob
+  three-way hash check applies. `auth_meta` records `prereg_path` and `prereg_sha256`. This declaration-based invariant
+  is deliberately more general than a hard-coded mode-to-prereg mapping because one mode may legitimately use several
+  preregistrations over time. Existing frozen requests already included their prereg and were not contaminated by C6.
+- **P1 is now closed** (see "Trust-Core Migration" below). Oracle, evidence classification, C2 adjudication and
+  authorisation are differentiator/trust-kernel logic that used to live inside a large `scripts/` runner. The boundary
+  taken is a thin CLI/provider adapter in `scripts/` and importable pure/protocol logic under `src/ithuriel/`; this was
+  a code-ownership correction, not the parked ExperimentManager or other Bucket-B platform machinery.
+
 ## WoZ Round Two, Track A (2026-07-22)
 
 Round two is pre-registered in `docs/trial/prereg-woz-round2-track-a.md` and frozen at the protocol level. It tests a
@@ -669,3 +719,120 @@ optional polish. Passing C2 advances neither axis.
 
 The largest outstanding debt is that the product hypothesis has never been tested against anyone outside the build.
 C3 and C4 cannot be self-tested by definition. Rust remains deferred and its trigger has never fired.
+
+## AI-Security Roadmap Triage and Prototype Role Separation (2026-07-23)
+
+The recent-paper and open-source-project triage is recorded in
+`docs/papers/AI_Security_Papers_2024-2026.md`, including the rationale, candidate-tool boundaries and questions for
+the next discussion. It is a provisional planning note, not an approved roadmap or assurance specification. Reading
+priority and development priority are deliberately separate.
+
+Provisional roadmap judgement:
+
+- Do not turn each paper or project into an internal module. Preserve Base=borrow / Differentiator=build: scanners
+  and evaluation execution are borrowed; Ithuriel owns the Evidence/Finding/Claim boundary and the strength and scope
+  of the resulting conclusion.
+- Do not open a broad new platform build before the current calendar-probe gates close: repeated instrument
+  qualification, ADR-0020 C1/C3/C4, a participant outside the build, fidelity beyond mock, and the still-open extraction
+  of trust-kernel logic from the large runner remain prior work.
+- The proposed first new post-milestone vertical slice is `Agent Component Intake Assurance`: static skill scanning
+  first, followed only later by MCP scanning inside a disposable sandbox and through Action-hash approval, RoE and the
+  two-stage PEP. Borrowed scanners emit raw facts; Ithuriel independently adjudicates them.
+- Snyk Agent Scan is the leading thin-adapter candidate, subject to version-tolerant parsing, raw-output retention,
+  explicit third-party data-egress records and the fact that MCP discovery can execute configured commands.
+  Tencent AI-Infra-Guard / `aig-skill-scan` is a comparison backend and taxonomy/fixture source, not a core platform
+  dependency. Its unauthenticated full-stack service must not be exposed publicly, and its pipe-to-shell installer is
+  not a production path.
+- Add UK AISI Inspect AI to the reading/project list as the preferred long-term evaluation abstraction. CAISI Cyber
+  Evals is a later external benchmark backend; verify its currently unclear repository licence before vendoring or
+  code reuse.
+- AgentDoS-style resource limits are a cross-cutting invariant for every future backend and become their own slice
+  only when a real multi-tool/sub-agent runtime exists. Memory assurance is triggered only by real persistent memory.
+  CyberSecEval informs a small release-regression gate before it justifies a broad suite. Do not build a generic red-team
+  platform, unattended SOC or production honeypot system from this reading list.
+
+The same discussion corrected an over-broad interpretation of developer/operator separation. The provisional rule is:
+
+> Separate roles early, separate people later; when independence is absent, weaken the claim rather than fabricate
+> independence.
+
+Developer and operator remain distinct structural roles because they have different inputs, permissions, knowledge and
+failure responsibilities. During prototype engineering, however, one person may occupy both roles to test the runner,
+Action/approval/execution chain, evidence closure, basic instrument discrimination and failure recording. This does not
+require two accounts, separate services or a queue merely to create procedural appearance.
+
+Person separation is claim-driven:
+
+- same-person operation can support internal engineering and instrument-development evidence when the relationship is
+  disclosed as `person_independence=none`;
+- it cannot show that an unfamiliar operator understands or corrects a compiled probe, avoids overclaiming, or makes an
+  independent disposition;
+- C2 may therefore be developed and run by a co-builder within its existing bounded instrument claim, while C3/C4 must
+  use someone who did not participate in their design;
+- Hat A/Hat B freezing, commit order and hash binding still control post-hoc mutation and experimental contamination,
+  but the same person wearing both hats does not create an independent approval;
+- real high-risk side effects, independent oversight claims and external/customer assurance trigger actual person
+  separation.
+
+Questions intentionally left for the next discussion: whether to approve component-intake assurance as the next slice;
+whether its first spike is static-skill-only or includes one governed MCP fixture; whether Snyk is the primary adapter and
+`aig-skill-scan` only a comparator; whether Inspect is triggered by a second evaluation backend or by the first model
+upgrade; the exact risk triggers and claim ceiling for each person-independence level; and which authoritative roadmap or
+ADR should receive these decisions if approved.
+
+## Trust-Core Migration, P1 Complete (2026-07-23)
+
+The final partner-review item, P1, is done. The differentiator logic that had accumulated inside a single 3596-line
+`scripts/run_calendar_probe.py` now lives in an importable trust core, and the runner has shrunk by forty-one per cent to
+2123 lines. This was a pure refactor: no API calls, no schema change, and no change to the probe's external behaviour. The
+work sits on branch `refactor/p1-runner-to-trust-core`, pushed but not yet raised as a pull request, across five commits
+that are each independently revertible.
+
+The split follows the coupling gradient, least entangled first, and every step had to leave both the runner self-test and
+the pytest suite green before it was committed. `src/ithuriel/probes/calendar/c2.py` holds the Fisher decision table and
+the layered C2a/C2b adjudication, which are pure functions with no AgentDojo dependency and therefore the cleanest place
+to start. `payload.py` holds the scenario definition, the complexity-ladder payloads, the product-layer length matching
+from the C1 fix, `build_env`, and the pre-registration constants. `oracle.py` holds the layered L0 to L6 oracle, the
+per-call classification, evidence capture, the family-specific interpretable denominator from D1, and the shared content
+hash `_sha`. `governance/execution_authorization.py` holds the ADR-0022 authorisation chain: the three-way hash that fails
+closed, the approval window and per-trial deadline, and the run receipt.
+
+Several engineering disciplines from this migration are worth reusing. Every AgentDojo import in the original file was
+function-local rather than module-level, so the trust-core modules never couple to the borrowed base at import time; a
+grep to confirm this was the precondition that made the whole extraction clean. Constants used in dozens of places, such
+as the target day appearing sixty-one times, were re-imported explicitly back into the runner namespace so that the many
+call sites needed no edits at all; the runner became a thin entry point of re-imports, provider glue and orchestration.
+The dependency direction had to stay single and clean: oracle depends on payload, governance depends on oracle and
+payload, and the runner depends on all of them. A library module must never import from the runner script, and enforcing
+that forced `_sha`, the measurement schema version and the cell grid to move into the trust core rather than linger in the
+runner. Large verbatim moves were extracted by line range with a script rather than retyped, to avoid transcription error,
+and then checked by importing the new module before any wiring.
+
+One genuine logic change was unavoidable. Two governance functions had derived their default repository root from
+`__file__` on the assumption that the file lived in `scripts/`. After moving two directories deeper that assumption broke,
+so the default is now pinned to a `_PROJECT_ROOT` computed four levels up, which resolves to the same project directory as
+before, with a comment and a test guarding it. The lesson is that any code deriving paths from `__file__` must be re-pinned
+whenever it changes depth. Equivalence was proved rather than assumed. The runner self-test was kept unchanged during the
+extractions so it served as a before-and-after oracle, passing all 276 checks at every step, and the stability of `_sha`
+was demonstrated by recomputing the hashes of three already-committed execution requests and matching them against their
+approvals, so the ADR-0022 chain is provably intact; hash stability is exactly what most needs checking when an
+authorisation chain moves.
+
+The trust core is now importable and directly covered by pytest, which rose from 200 tests to 254. The separate
+"migrate the self-checks" task was closed against four acceptance criteria rather than by porting all 276 checks by hand.
+The self-test must have no network or billing dependency, which was shown by running it under a scrubbed environment with
+every key removed; it must return a non-zero exit code on failure, which was shown by injecting a failing check and
+observing exit one; it must not redundantly carry the pure-logic assertions already migrated into pytest; and it must
+actually run in the regular validation flow, which a new `test_runner_selftest.py` now guarantees by running the self-test
+as a subprocess and asserting a zero exit. To satisfy the third criterion the pure-logic sections were removed from the
+self-test, taking its passing count from 276 to 186, while everything that genuinely exercises `build_env`, `evaluate`,
+`execution_runtime`, the git authorisation chain, the interleaved schedule or the evidence-artefact round trip was kept in
+place. The reusable definition of "migration complete" is therefore not to empty every line out of the self-test, but to
+hold the pure logic as a single source of truth in pytest, keep the integration checks where they belong, and wire the
+self-test into the regular flow so that it fails loudly.
+
+P1 changes nothing about the C2 conclusion or its bounds. The probe still lacks instrument qualification and real-operator
+C1, C3 and C4; its assurance level remains none and its target fidelity remains mock; and none of it extrapolates beyond
+the frozen configuration. The next step is one of two independent paths, each run through a full Hat A to Hat B cycle:
+collect an attack story from the partner for Track A, without revealing in advance that a distortion has been planted, or
+re-run stage one of the augmented-participant family with the corrected payload.

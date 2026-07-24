@@ -77,7 +77,7 @@ from ithuriel.governance.execution_authorization import (  # noqa: E402
     _last_commit_touching, _assert_tracked_and_clean, _assert_strict_ancestor,
     _governed_materials_env, _max_runtime_env, write_run_receipt, run_completion_status,
     deadline_exceeded, execution_runtime, _load_json, validate_execution_authorization,
-    MAX_APPROVAL_WINDOW_HOURS)
+    verify_env_matches_lock, MAX_APPROVAL_WINDOW_HOURS)
 
 
 
@@ -1473,6 +1473,9 @@ def confirm_run():
         auth_meta = validate_execution_authorization(
             os.environ.get("CAL_EXECUTION_REQUEST_FILE", "").strip(),
             os.environ.get("CAL_APPROVAL_FILE", "").strip(), runtime)
+        # D1 preflight：已装版本必须与冻结的 uv.lock 一致（闭合「Hat A 时 installed≠lock」的初始不一致，
+        # runtime 相等门只捕获事后漂移，捕获不了这个）。任何计费跑前都做。
+        auth_meta["env_lock_check"] = verify_env_matches_lock()
     except (AuthorizationError, ValueError) as exc:
         print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
         return 4
@@ -1706,6 +1709,9 @@ def sweep_run():
         auth_meta = validate_execution_authorization(
             os.environ.get("CAL_EXECUTION_REQUEST_FILE", "").strip(),
             os.environ.get("CAL_APPROVAL_FILE", "").strip(), runtime)
+        # D1 preflight：已装版本必须与冻结的 uv.lock 一致（闭合「Hat A 时 installed≠lock」的初始不一致，
+        # runtime 相等门只捕获事后漂移，捕获不了这个）。任何计费跑前都做。
+        auth_meta["env_lock_check"] = verify_env_matches_lock()
     except (AuthorizationError, ValueError) as exc:
         print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
         return 4
@@ -1837,6 +1843,9 @@ def matrix_run():
         auth_meta = validate_execution_authorization(
             os.environ.get("CAL_EXECUTION_REQUEST_FILE", "").strip(),
             os.environ.get("CAL_APPROVAL_FILE", "").strip(), runtime)
+        # D1 preflight：已装版本必须与冻结的 uv.lock 一致（闭合「Hat A 时 installed≠lock」的初始不一致，
+        # runtime 相等门只捕获事后漂移，捕获不了这个）。任何计费跑前都做。
+        auth_meta["env_lock_check"] = verify_env_matches_lock()
     except (AuthorizationError, ValueError) as exc:
         print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
         return 4
@@ -2031,6 +2040,9 @@ def real_run():
         auth_meta = validate_execution_authorization(
             os.environ.get("CAL_EXECUTION_REQUEST_FILE", "").strip(),
             os.environ.get("CAL_APPROVAL_FILE", "").strip(), runtime)
+        # D1 preflight：已装版本必须与冻结的 uv.lock 一致（闭合「Hat A 时 installed≠lock」的初始不一致，
+        # runtime 相等门只捕获事后漂移，捕获不了这个）。任何计费跑前都做。
+        auth_meta["env_lock_check"] = verify_env_matches_lock()
     except (AuthorizationError, ValueError) as exc:
         print(f"[probe] AUTHORIZATION DENIED：{exc}", file=sys.stderr)
         return 4

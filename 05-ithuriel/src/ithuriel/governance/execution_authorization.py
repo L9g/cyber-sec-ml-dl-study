@@ -41,6 +41,44 @@ def _env_identity():
         "agentdojo": _v("agentdojo"),
         "openai": _v("openai"),
     }
+
+
+def _lock_versions(repo_root, packages=("agentdojo", "openai")):
+    """从 uv.lock 抽取指定包的版本 pin（块扫描，不引 toml 依赖）。
+
+    只匹配顶层 `name = "<pkg>"` 包块的 `version = ...`；依赖引用行 `{ name = "openai" },`
+    strip 后不以 `name = ` 起始故被跳过。
+    """
+    out, cur = {}, None
+    with open(os.path.join(repo_root, "uv.lock"), encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if s.startswith("name = "):
+                cur = s.split("=", 1)[1].strip().strip('"')
+            elif s.startswith("version = ") and cur in packages:
+                out[cur] = s.split("=", 1)[1].strip().strip('"')
+                cur = None
+    return out
+
+
+def verify_env_matches_lock(repo_root=None):
+    """D1 preflight：已装版本必须与 uv.lock 声明一致，否则 fail closed（partner review 2026-07-24）。
+
+    runtime 里的 `environment` 相等门只捕获 **Hat A 之后**的漂移；它捕获不了「Hat A 冻结时已装版本
+    与冻结的 lock 就不一致」这一初始不一致（会把 installed 版本静默烘进 request）。本 preflight 在跑前
+    显式核 installed == lock-declared，闭合该 gap。uv.lock 已是受管辖材料（字节冻结），故 lock 声明本身
+    也在哈希门内。
+    """
+    repo_root = repo_root or _PROJECT_ROOT
+    locked = _lock_versions(repo_root)
+    installed = _env_identity()
+    mismatch = {p: (locked.get(p), installed.get(p)) for p in locked
+                if locked.get(p) != installed.get(p)}
+    if mismatch:
+        raise AuthorizationError(
+            "已装版本与 uv.lock 不一致（D1 preflight fail-closed）："
+            + "; ".join(f"{p}: lock={lk} installed={ins}" for p, (lk, ins) in mismatch.items()))
+    return {"locked": locked, "installed": {p: installed.get(p) for p in locked}}
 from ithuriel.probes.calendar.payload import MEASUREMENT_SCHEMA_VERSION, CELLS
 
 # 本模块从 scripts/run_calendar_probe.py 搬入 src/ithuriel/governance/ 后，默认 repo_root 须指向

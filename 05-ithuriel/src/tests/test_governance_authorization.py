@@ -7,9 +7,14 @@ git-backed 的 validate_execution_authorization 由 runner --self-test 端到端
 import datetime
 import os
 
+import pytest
+
+from ithuriel.governance import execution_authorization as EA
 from ithuriel.governance.execution_authorization import (
     deadline_exceeded,
     run_completion_status,
+    verify_env_matches_lock,
+    AuthorizationError,
     _PROJECT_ROOT,
 )
 
@@ -60,3 +65,27 @@ def test_all_trials_done_before_deadline_is_completed_not_terminated():
     assert st["run_status"] == "completed"
     assert st["confirmatory_analysis_eligibility"] == "preregistered"
     assert st["primary_verdict"] is None  # 交给预注册决策表，不在此覆盖
+
+
+# ---------------- D1 preflight：已装版本 vs uv.lock（partner review 2026-07-24）----------------
+def test_env_lock_check_passes_on_current_repo():
+    # 当前 .venv 与 uv.lock 一致 → 返回 locked/installed，且两者相等。
+    out = verify_env_matches_lock()
+    assert set(out["locked"]) == {"agentdojo", "openai"}
+    assert out["locked"] == out["installed"]
+
+
+def test_env_lock_check_fails_closed_on_installed_drift(monkeypatch):
+    # 模拟已装 agentdojo 漂移到 lock 未声明的版本 → fail closed（捕获 runtime 相等门抓不到的初始不一致）。
+    real = EA._env_identity()
+    monkeypatch.setattr(EA, "_env_identity",
+                        lambda: {**real, "agentdojo": "0.9.99-drifted"})
+    with pytest.raises(AuthorizationError, match="uv.lock 不一致"):
+        verify_env_matches_lock()
+
+
+def test_lock_versions_ignores_dependency_reference_lines():
+    # 解析只取顶层 package 块的 version，不被 `{ name = "openai" }` 依赖引用行误导。
+    pins = EA._lock_versions(_PROJECT_ROOT)
+    assert pins["agentdojo"] == EA._env_identity()["agentdojo"]
+    assert pins["openai"] == EA._env_identity()["openai"]

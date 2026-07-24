@@ -1,0 +1,30 @@
+{
+ "artifact": "calendar_confirm_20260724T220803Z.json",
+ "artifact_sha256": "2ac5da1b6e04f82d5adc19154c446a336f5982c6a518f2196045fafea068cb21",
+ "execution_request_hash": "088d9311ed2ac2121650a650a791fae342a99f6a736fb1040975e5382e4524aa",
+ "request_commit": "27fadfeb52703196a9ef172c45d18cb4ca5c6e0b",
+ "approval_commit": "14de68a1ff14dc7e89add798f81c3ee560b865ce",
+ "temporal_anchor": "local_git_only",
+ "authorization_status": "approved",
+ "analysis_eligibility": "preregistered",
+ "run_level_analysis_eligibility": null,
+ "started_at": "2026-07-24T22:04:04.716572+00:00",
+ "artifact_generated_at": "2026-07-24T22:08:03.969054+00:00",
+ "receipt_generated_at": "2026-07-24T22:08:03.982956+00:00",
+ "verdict": "c2_pass",
+ "approved_budget_cap_usd": 3.0,
+ "budget_enforcement": "hash-bound preflight plus max_trials; no live USD metering",
+ "provider_budget_cap": {
+  "provider": "OpenRouter",
+  "required": true,
+  "cap_usd": 3,
+  "max_allowed_cap_usd": 10,
+  "scope": "account",
+  "attested_by": "l9g",
+  "observed_at": "2026-07-24T21:47:21Z",
+  "evidence_ref": null
+ },
+ "deadline_utc": "2026-07-24T23:34:04.608404+00:00",
+ "run_status": "completed",
+ "termination_reason": null
+}

@@ -275,3 +275,26 @@ cap_usd 与带时区 observed_at 报我，我落进 approval 草稿由你本人 
 请求链完整。pytest **299**（全 PATH；无 uv 298+1 skip）、self-test **196**；`verify_env_matches_lock()` 端到端返回
 interpreter+pinned+lock_sync(pinned_project_environment=repo/.venv)+boundary；provider-cap 各失败模式（NaN/inf/
 非法 observed_at/未来时间/provider 不符/超上限/scope 不符/缺键）均 fail-closed。
+
+---
+
+## 8. Round 5 收尾（2026-07-24）：R5-D1 真门漏洞已修 + 诚实化，停止线 spot-check
+
+用户复核收窄：1 处**真门漏洞**（非理论边界）+ 3 处诚实化，并设停止线。新 Hat A **007** = commit
+（见 prereg §11 链尾），hash `088d931…`，请求文件 `docs/trial/execution-request-exfil-email-c2-main-007.json`。
+
+- **R5-D1（真门漏洞，已修）**：`UV_ONLY_INSTALL_LOCAL=1` 让 uv 只校验 0 个远端依赖、近乎空过（已复现：
+  `Checked in 0.04ms / Would make no changes / exit 0`）——round-4 的 `_verify_lock_sync` 逐个清 3 个 UV_* 是
+  **blocklist、漏了它**。修：改 **allowlist——清掉全部继承 `UV_*`**，只显式设 `UV_PROJECT_ENVIRONMENT`。
+  单测捕获受控 env 断言其中 UV_* 只剩 `UV_PROJECT_ENVIRONMENT`。
+- **诚实化（历史更正，非行为改动）**：①135 = **trial-attempt 上限**，非 provider API 调用数、非成本 cap（prereg §7、
+  request gap）②「AI 不得代签」= **procedural policy、门证不了**（门只验 approved_by 非空 + 角色 + commit 顺序、
+  鉴别不了真人；prereg §10、request gap）③剩余边界收窄为 **「在已声明威胁模型与 claim scope 内无可信未缓解
+  路径系统性伪造结论」**（prereg §10、request gap）④receipt 补 `deadline_utc`/`run_status`/`termination_reason`。
+
+**停止线（用户定，请按此裁）**：007 若 **hash/runtime/materials + `UV_ONLY_INSTALL_LOCAL` 反例**通过 → **GO**；
+**不再**要求包字节哈希、可信时间戳、实时 USD meter、强制 evidence hash、Python `-I`（这些超出 self-authorized
+T0–T2 威胁模型，边际收益 < 成本）。请 spot-check 这三样 + 该反例，给最终 go/no-go。
+
+自查：hash `088d931…` `--hash-execution-request` 复算一致、runtime 逐字节相等、9 材料 sha 一致；pytest **300**
+（全 PATH；无 uv 299+1 skip）、self-test **196**；allowlist 单测证明受控 env UV_* 只剩 `UV_PROJECT_ENVIRONMENT`。

@@ -133,9 +133,10 @@ main∧preregistered、必填字段非空）全过。
 ## 4. Round 2（2026-07-24）：第一轮 NO-GO 的 6 条已修，请复核新 hash
 
 **你上一轮报告 `reports/partner-review-2026-07-24-main-c2.md` 判 NO-GO，6 条我全部认同并已修**
-（fix commit `85746ee`；新 Hat A 002 = commit `a6713d4`，请求文件
-`docs/trial/execution-request-exfil-email-c2-main-002.json`，supersede 已作废的 001/`09844e3`）。
-请复核修复是否到位、以及新请求 hash `dd8ef20…` 能否让我签 Hat B。逐条：
+（fix commit `85746ee` + D1 加固 `594e756`）。**当前 Hat A = 003**（commit `e5ee570`，请求文件
+`docs/trial/execution-request-exfil-email-c2-main-003.json`，hash `afdb5ff…`，请求链 001→002→003
+见 prereg §11；被拒/被 supersede 的 001/002 保留作历史）。请复核修复是否到位、新请求 hash 能否让我签
+Hat B。**⚠ 我在写这份 round-2 前先自查了你留的三个点，D1 因此又改了一次**（见下 D1 条），逐条：
 
 - **C1（曝光遥测被攻击后 tool result 污染）**：`_exposure_markers` 现只扫**首个 family-action
   (send_email) tool call 之前**的 tool 输出（`oracle.py`）；动作后的回显另记 `post_action_marker_echo`
@@ -148,16 +149,31 @@ main∧preregistered、必填字段非空）全过。
   emitted/executed/delivered 各自 `hits/n/Wilson 区间`（`None=not_measured` 不进分母），互不顶替、
   只作描述不进门槛；confirm 每臂 aggregate 加 `descriptive_layers`。测试钉了「B=true,C=false,A=false
   不互相顶替」「三层分列」「None=not_measured」。
-- **D1（运行依赖在哈希门外）**：`execution_runtime` 把 `environment`（python/agentdojo/openai 版本）写进
-  **hash-bound runtime**——运行时重读已装版本，漂移即 runtime 失配→lapsed（复用既有相等门，无新机制）；
-  `pyproject.toml`+`uv.lock` 加进 governed materials（现 **9 项**）。请核这个「靠 runtime 相等门捕获漂移」
-  是否真等价于你建议的 preflight installed-version check，有没有绕过路径。
+- **D1（运行依赖在哈希门外）**：分两步。①`execution_runtime` 把 `environment`（python/agentdojo/openai
+  版本）写进 **hash-bound runtime**——运行时重读已装版本，漂移即 runtime 失配→lapsed（复用既有相等门）；
+  `pyproject.toml`+`uv.lock` 加进 governed materials（现 **9 项**）。**②自查补丁（`594e756`）**：我发现①
+  只闭合了一半——runtime 相等门只捕获 Hat A **之后**的漂移，捕获不了「Hat A 冻结时已装版本就 ≠ 冻结的
+  uv.lock」的初始不一致（会把 installed 版本静默烘进 request）。故补 `verify_env_matches_lock()` preflight
+  （跑前核 installed == uv.lock pin、fail-closed，四种计费 run 模式都做）。请核：这两层合起来是否真等价你
+  建议的 preflight，`_lock_versions` 的块扫描解析有没有漏（如依赖引用行 `{ name="openai" }` 误配、
+  extras/多来源）、以及还有没有别的门外依赖（系统库、环境变量、agentdojo 数据文件）能改变行为。
 - **D2/D3/D4**：C2a/C2b 收窄为 ambient-canary 基础对照 / per-trial 共现暴露对照（prereg §1）；prereg 头
   改 FROZEN + §11 修订记录（D3）；`claims_prohibited` 加禁 instrument qualification（D4，prereg §9 同步）。
 - **G4（$3 无实时熔断）**：我接受它作「批准的计划额度 + 次数上限」、不冒充硬成本熔断，已在 request
   `known_fidelity_gaps` 与主简报 G4 如实标注。**若你坚持没有真实额度熔断就该 no-go**，请在 verdict 里
   点明——这是你上轮留的条件，我需要你明确它是否仍是阻塞。
 
-自查：新 request hash `dd8ef20…` 已 `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
-**逐字节相等**（含新 `environment`）、9 项材料 sha 与文件一致、supersede 链完整。pytest **273**、
+**我已自查的三点（供你复核我的自查，不替代你的独立判断）**：
+1. **C1 切点**：empirical 多工具时序压测（read → 中间良性工具 search_emails → attack send_email →
+   result 回显 → final）确认预动作签名保持 `FTFF`、污染只进 `post_action_marker_echo`；切点「首个
+   send_email tool call 之前」对中间良性工具稳健。请核有无我没想到的时序（如模型先发一封良性 email 再发
+   攻击 email：首个 send_email 即切点，良性 email 的 result 也被切走——这是否是我想要的？我认为是，因为
+   treatment 曝光只该算**任何动作之前**）。
+2. **D1**：见上，已补 preflight 闭合初始不一致。
+3. **G4（$3 无实时熔断）**：**这条我没法自查、是财务约束问题，已回给用户定**——$3 是硬财务上限还是计划
+   额度？若硬上限，你上轮说即使其余修完仍应 no-go 直到有真实额度熔断。请在 verdict 里重申它是否仍是阻塞、
+   以及若用户确认 $3 是「计划额度 + 次数上限」而非硬熔断，是否可接受。
+
+自查：新 request hash `afdb5ff…` 已 `--hash-execution-request` 复算一致、runtime 与 `confirm_run` 重建
+**逐字节相等**（含 `environment`）、9 项材料 sha 与文件一致、请求链 001→002→003 完整。pytest **276**、
 self-test **196**。

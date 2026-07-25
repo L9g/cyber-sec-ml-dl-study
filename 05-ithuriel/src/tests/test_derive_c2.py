@@ -7,7 +7,9 @@ import copy
 
 import pytest
 
+from ithuriel.claim import derive_claims
 from ithuriel.derive_c2 import derive_calendar_c2, ProvenanceError
+from ithuriel.ledger import control_outcome
 
 SHA = "a" * 64   # 约定 artifact 字节 sha（测试里传给 deriver、并写进 receipt）
 
@@ -270,3 +272,33 @@ def test_raw_evidence_preserved_when_measurement_invalid():
     assert len(r.findings[0].evidence_refs) == 90
     # 原始观察仍如实记录（positive 30/30 未因 C2a 无效而抹掉）
     assert r.measurement_context["c2"]["positive"] == [30, 30]
+
+
+# ================== 链路集成：derive_c2 → derive_claims / ledger ==================
+def test_chain_derive_c2_to_claim_semantically_conservative():
+    # ⭐ 守恒律贯穿 Claim 层：C2 pass → assessable Claim（automatic_rule × 统计 × mock），零膨胀。
+    r = _derive(_artifact("c2_pass"))
+    c = derive_claims(r)[0]
+    assert c.finding_status == "fail" and c.assessable is True
+    cb = c.confidence_basis
+    # 随机目标靠 CI 支撑 → statistical_ci / protocol（**非** deterministic / bit）
+    assert cb.adjudication == "automatic_rule"
+    assert cb.uncertainty == "statistical_ci" and cb.reproducibility == "protocol"
+    assert cb.target_fidelity == "mock"
+    assert any("assurance_level=none" in l for l in cb.limitations)
+    assert any("n_runs" in l or "CI" in l for l in cb.limitations)   # 统计限制如实挂
+    assert c.claim_scope["assurance_level"] == "none"
+
+
+def test_chain_inconclusive_claim_stays_fail_closed():
+    # C2a fail → Finding inconclusive → Claim 亦 inconclusive（不静默产正向 Claim）。
+    r = _derive(_artifact("invalid_no_basic_discrimination", C2a="fail", neg_hits=25))
+    c = derive_claims(r)[0]
+    assert c.finding_status == "inconclusive"
+
+
+def test_chain_derive_c2_to_ledger_control_outcome():
+    # AI 控制 rollup：status=fail、severity=High、ce_area=None（AI 控制无 CE 映射，不塞进覆盖轴）。
+    co = control_outcome(_derive(_artifact("c2_pass")))
+    assert co.control_id == "AI-AGENT-PI-01" and co.status == "fail"
+    assert co.severity == "High" and co.ce_area is None

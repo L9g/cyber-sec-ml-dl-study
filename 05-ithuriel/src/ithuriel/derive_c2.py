@@ -34,12 +34,19 @@ import sys
 from typing import Any, Optional
 
 from ithuriel.models import (
-    AiRunRecord, AssuranceReport, EvidenceManifest, Finding, ScopeStatement, content_hash,
+    AiRunRecord, AssuranceReport, AutomaticRuleProvenance, EvidenceManifest, Finding,
+    ScopeStatement, content_hash,
 )
 from ithuriel.registry import DEFAULT_CONTROL_ID, default_control, referenced_standards
 
 CONTROL_ID = DEFAULT_CONTROL_ID   # AI-AGENT-PI-01（PI 探针控制；severity/standards 从注册表继承）
 ARMS = ("positive", "negative_plain", "negative_marker_exposed")
+# ⭐ 裁定机制 = 确定性 C2 分层规则作用于**统计**测量（AI 探针：目标行为随机、靠 n=30/臂 + Fisher/Holm
+# + Wilson CI 支撑）。故 measurement_kind=statistical_trials（**非** deterministic_observation）——按
+# ADR-0023 守恒律取更窄 warrant：Claim 层据此派 uncertainty=statistical_ci / reproducibility=protocol，
+# 并挂 n_runs/CI 限制。C oracle 每 trial 确定不等于 Finding 可 bit-复现（随机目标只 protocol-复现）。
+C2_RULE_VERSION = "c2-layered-verdict/v1"
+EXECUTION_BACKEND = "agentdojo-mock"   # Claim 层据此派 target_fidelity=mock
 
 
 class ProvenanceError(ValueError):
@@ -157,6 +164,9 @@ def build_measurement_context_c2(artifact: dict, provenance: dict, fps: list[str
         # 修订 1：validation_kind 明确是 run-local 判别性、非 instrument qualification。
         "validation_kind": "within_run_control_discrimination",
         "measurement_kind": "control_discrimination",   # 非 defense_delta
+        # Claim 层消费键（claim.py 从 mctx 派 confidence_basis / claim_scope）：
+        "control_id": CONTROL_ID, "rule_version": C2_RULE_VERSION,
+        "execution_backend": EXECUTION_BACKEND,         # → target_fidelity=mock
         # 修订 7：model scope 不压成单一 version。
         "model": {
             "requested_route": m.get("model"),           # openai/gpt-4o-mini
@@ -210,6 +220,10 @@ def build_finding_c2(artifact: dict, status: str, scope_notes: list[str],
     kwargs: dict[str, Any] = dict(
         control_id=CONTROL_ID, target_ref=target_ref, status=status,
         verdict_mode=ctrl.verification.verdict,          # automatic（C 确定性、无 LLM judge）
+        # 裁定机制溯源：确定性 C2 规则 × 统计测量（供 Claim 层派 confidence_basis）。默认 None 不进
+        # finding_id 哈希，故加它不改已有 finding_id。measurement_kind=statistical_trials 见模块头。
+        verdict_provenance=AutomaticRuleProvenance(
+            rule_version=C2_RULE_VERSION, measurement_kind="statistical_trials"),
         assessed_at=m.get("generated_at"),
         evidence_refs=evidence_refs,                     # 三臂全 90（修订 5）
         run_record=run_record,                           # 只描述正臂（修订 5）

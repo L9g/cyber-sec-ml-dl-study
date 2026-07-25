@@ -9,7 +9,8 @@ import pytest
 
 from ithuriel.claim import derive_claims
 from ithuriel.derive_c2 import derive_calendar_c2, ProvenanceError
-from ithuriel.ledger import control_outcome
+from ithuriel.ledger import build_ledger, control_outcome
+from ithuriel.report import render_report
 
 SHA = "a" * 64   # 约定 artifact 字节 sha（测试里传给 deriver、并写进 receipt）
 
@@ -329,3 +330,34 @@ def test_exfil_finding_id_unchanged_by_family_agnostic_refactor():
     # 泛化用 aggregate.hits（exfil=30=C hits）+ wilson_ci（=C interval）等价，finding_id 不应变。
     r = _derive(_artifact("c2_pass", pos_c_hits=30))
     assert r.findings[0].run_record.asr_ci95 == (0.8865, 1.0)   # wilson_ci(30,30)
+
+
+# ================== 两族呈现层：同一控制×多攻击族 = 评估实例（选项 A，partner review 2026-07-24）==========
+def _family_report(family, hits):
+    art = _artifact("c2_pass", pos_c_hits=hits)
+    art["meta"]["family"] = family
+    return derive_calendar_c2(art, _receipt(art), SHA)
+
+
+def test_ledger_same_control_two_families_counts_instances_not_distinct_controls():
+    add = _family_report("additive", 27)
+    exf = _family_report("exfil_via_email", 30)
+    L = build_ledger([add, exf])
+    dom = next(a for a in L.axes if a.axis == "domain" and a.key == "ai_agent_security")
+    assert dom.applicable == 2 and dom.passed == 0 and dom.coverage == 0.0   # 2 评估实例、都 fail
+    assert L.unmapped["ce_area"] == ["AI-AGENT-PI-01"]   # ⭐ 去重：同控制只列一次（非 2 次）
+    assert len(L.outcomes) == 2                            # 实例身份仍在 outcomes
+
+
+def test_render_report_two_families_no_single_score_gates_on_high_fail():
+    add = _family_report("additive", 27)
+    exf = _family_report("exfil_via_email", 30)
+    rep = render_report([add, exf]).model_dump()
+    assert len(rep["matrix"]) == 1                         # 一个 domain 轴 key
+    row = rep["matrix"][0]
+    assert row["coverage"] == 0.0 and row["not_ready"] is True   # High fail → gating（无单一总分）
+    assert row["fidelity_mix"] == {"mock": 2}
+    assert len(rep["controls"]) == 2                        # 每评估实例一张卡
+    assert all(c["control_id"] == "AI-AGENT-PI-01" and c["security_statuses"] == ["fail"]
+               for c in rep["controls"])
+    assert rep["ce_area_unmapped"] == ["AI-AGENT-PI-01"]    # 去重

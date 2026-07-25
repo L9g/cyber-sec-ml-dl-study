@@ -41,7 +41,11 @@ class AxisCoverage(BaseModel):
     """某 rollup 轴（domain / ce_area）某 key 的 graded coverage + gating。"""
     axis: str                                 # "domain" | "ce_area"（ADR-0021）
     key: str                                  # domain 如 "network_security"；ce_area 如 "firewalls"
-    applicable: int                           # 分母（排除 not_applicable；含 not_assessed）
+    # ⭐ applicable = **评估实例数**（每份 report 一个 ControlOutcome），**非 distinct 控制数**：同一控制
+    # 被多攻击族各测一次 = 多个实例（不池化、各自独立 finding_id，与探针纪律一致，partner review 2026-07-24
+    # 选项 A）。distinct 控制身份在 `CoverageLedger.outcomes[].control_id`；本切片只 2 族 1 控制、跨族 rollup
+    # 规则（一控制对所有族全 pass 才 covered）无真实消费需求 → 推迟，不提前建。
+    applicable: int                           # 分母（评估实例数；排除 not_applicable；含 not_assessed）
     passed: int
     coverage: float                           # passed / applicable（scoring.coverage）
     not_ready: bool                           # 任一 High/Critical fail（scoring.gating）
@@ -155,6 +159,8 @@ def build_ledger(reports: list[AssuranceReport],
         else:
             unmapped_ce_area.append(o.control_id)   # R1：无 CE-area 归属 → 单列、不进覆盖行
     axes = _rollup_axis("domain", by_domain) + _rollup_axis("ce_area", by_ce_area)
-    unmapped = {"ce_area": sorted(unmapped_ce_area)} if unmapped_ce_area else {}
+    # 去重（partner review 2026-07-24）：unmapped 列的是「哪些控制无 CE-area 映射」，非评估实例数——
+    # 同一控制被多攻击族各测一次（多个 outcome）时，unmapped 只列一次；实例数在 outcomes[].control_id。
+    unmapped = {"ce_area": sorted(set(unmapped_ce_area))} if unmapped_ce_area else {}
     return CoverageLedger(outcomes=outcomes, axes=axes,
                           generated_from=generated_from or [], unmapped=unmapped)

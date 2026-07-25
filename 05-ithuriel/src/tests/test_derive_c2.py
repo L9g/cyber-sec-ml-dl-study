@@ -361,3 +361,93 @@ def test_render_report_two_families_no_single_score_gates_on_high_fail():
     assert all(c["control_id"] == "AI-AGENT-PI-01" and c["security_statuses"] == ["fail"]
                for c in rep["controls"])
     assert rep["ce_area_unmapped"] == ["AI-AGENT-PI-01"]    # 去重
+
+
+# ---------------- utility 轴进保证链路（list-titles 变体, v4, 2026-07-25）----------------
+def _layer(hits, n, nm=0):
+    return {"hits": hits, "n": n, "n_not_measured": nm, "interval": [0.0, 1.0]}
+
+
+def _with_utility(art, host_task="list_titles", pos_tc=(25, 30), neg_tc=(2, 30)):
+    """给合成 artifact 挂 utility 节点 + host_task 身份（经 host_task_identity，与 runner 写入一致）。"""
+    from ithuriel.probes.calendar.payload import host_task_identity
+    art = copy.deepcopy(art)
+    ident = host_task_identity(host_task, art["meta"].get("family"))
+    art["meta"]["host_task"] = host_task
+    art["meta"]["host_task_profile"] = ident["host_task_profile"]
+    art["meta"]["utility_endpoint"] = ident["utility_endpoint"]
+    art["meta"]["utility_rule_version"] = ident["utility_rule_version"]
+    art["meta"]["probe_version_identity"] = ident["probe_version_identity"]
+    art["meta"]["measurement_schema_version"] = 4
+    def _u(tc):
+        return {"task_completion": _layer(*tc),
+                "user_visible_exact_canary": _layer(0, tc[1]),
+                "target_day_titles_observed_in_calendar_read": _layer(tc[1], tc[1])}
+    art["aggregate"]["positive"]["utility"] = _u(pos_tc)
+    art["aggregate"]["negative_plain"]["utility"] = _u(neg_tc)
+    art["aggregate"]["negative_marker_exposed"]["utility"] = _u(neg_tc)
+    return art
+
+
+def test_positive_utility_rate_enters_run_record():
+    r = _derive(_with_utility(_artifact("c2_pass"), pos_tc=(25, 30)))
+    assert r.findings[0].run_record.utility_rate == round(25 / 30, 4)
+
+
+def test_old_artifact_without_utility_derives_none_not_zero():
+    # 守恒律：v3 artifact 无 utility 节点 → utility_rate None，不默认 0.0
+    r = _derive(_artifact("c2_pass"))
+    assert r.findings[0].run_record.utility_rate is None
+
+
+def test_utility_context_none_for_old_artifact_present_for_list_titles():
+    old = _derive(_artifact("c2_pass"))
+    assert old.measurement_context["utility"] is None
+    new = _derive(_with_utility(_artifact("c2_pass")))
+    u = new.measurement_context["utility"]
+    assert u is not None and u["primary_endpoint"] == "list_title_recall"
+    assert u["per_arm"]["positive"]["task_completion"]["hits"] == 25
+
+
+def test_list_titles_scope_drops_free_busy_floor_and_states_no_joint_verdict():
+    r = _derive(_with_utility(_artifact("c2_pass")))
+    joined = " ".join(r.scope.not_covered)
+    assert "FREE/BUSY" not in joined and "proxy 地板" not in joined
+    assert "联合裁定" in joined and "无预注册 utility 接受阈值" in joined
+
+
+def test_read_only_exfil_still_shows_free_busy_floor_regression():
+    # host_task 缺失（旧 free-busy-proxy artifact）→ 仍显示 FREE/BUSY 地板文字
+    r = _derive(_artifact("c2_pass"))
+    assert any("FREE/BUSY proxy 地板" in nc for nc in r.scope.not_covered)
+
+
+# ---------------- reviewer P1 #2：版本身份 + 窄 utility observation 进派生范围 ----------------
+def test_probe_version_identity_flows_into_mctx_target_ref_and_scope():
+    r = _derive(_with_utility(_artifact("c2_pass")))
+    ident = "calendar-ipi-mavy/list-titles-v1"
+    assert r.measurement_context["probe_version_identity"] == ident
+    assert r.findings[0].target_ref["probe_version_identity"] == ident
+    assert r.scope.in_scope["probe_version_identity"] == ident
+    assert r.measurement_context["utility"]["probe_version_identity"] == ident
+
+
+def test_old_artifact_probe_identity_absent_does_not_change_finding_id():
+    # 旧 v3 artifact 无 probe_version_identity → 不得塞进 target_ref（否则改历史 finding identity）
+    r = _derive(_artifact("c2_pass"))
+    assert "probe_version_identity" not in r.findings[0].target_ref
+    assert r.measurement_context["probe_version_identity"] is None
+
+
+def test_list_titles_scope_has_narrow_utility_observation():
+    r = _derive(_with_utility(_artifact("c2_pass"), pos_tc=(25, 30)))
+    uo = r.scope.in_scope["utility_observation"]
+    assert uo["endpoint"] == "list_title_recall"
+    assert uo["positive_task_completion"]["hits"] == 25 and uo["positive_task_completion"]["n"] == 30
+    assert uo["positive_task_completion"]["rate"] == round(25 / 30, 4)
+    assert "descriptive only" in uo["interpretation"] and "联合裁定" in uo["interpretation"]
+
+
+def test_old_artifact_scope_has_no_utility_observation():
+    r = _derive(_artifact("c2_pass"))
+    assert "utility_observation" not in r.scope.in_scope

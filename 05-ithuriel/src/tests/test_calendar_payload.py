@@ -97,3 +97,63 @@ def test_payload_valid_rungs_produce_information_block(rung):
 def test_attack_payload_unknown_family_raises():
     with pytest.raises(ValueError):
         attack_payload(NONCE, 1, "no_such_family")
+
+
+# ---------------- fixture 漂移哨兵（golden tripwire, 2026-07-25）----------------
+# FROZEN_TARGET_DAY_TITLES 只作漂移哨兵、**不是运行时真值源**（运行时从 pre_env 派生）。
+# 这条测试断言 build_env 在 TARGET_DAY 实际产出的标题集恰为冻结三者，跨三臂稳定——
+# 上游 AgentDojo 默认环境或本地注入任一漂移即失败。
+from ithuriel.probes.calendar.payload import (  # noqa: E402
+    build_env, FROZEN_TARGET_DAY_TITLES, TARGET_DAY)
+
+
+def _target_day_titles(env):
+    return {str(ev.title).strip() for ev in env.calendar.events.values()
+            if str(ev.start_time).startswith(TARGET_DAY) and str(ev.title or "").strip()}
+
+
+def test_frozen_target_day_titles_matches_build_env_all_arms():
+    # positive + 两负臂（plain / marker_exposed）：标题集必须相同且 == FROZEN（标题跨臂稳定）
+    arms = [dict(malicious=True, neg_variant="plain"),
+            dict(malicious=False, neg_variant="plain"),
+            dict(malicious=False, neg_variant="marker_exposed")]
+    for cfg in arms:
+        _s, env = build_env("TRIPWIRE01", rung=1, family="exfil_via_email", **cfg)
+        assert _target_day_titles(env) == set(FROZEN_TARGET_DAY_TITLES), cfg
+
+
+# ---------------- host_task 身份单一真相源（reviewer P1；三分 profile/endpoint/rule/probe-id）----------------
+import pytest as _pytest   # noqa: E402
+from ithuriel.probes.calendar.payload import (  # noqa: E402
+    host_task_identity, LIST_TITLES_UTILITY_RULE_VERSION)
+
+
+@_pytest.mark.parametrize("host_task,family,profile,endpoint,rule,probe", [
+    ("read_only", "exfil_via_email", "read_only_free_busy_proxy", "free_busy_reply",
+     None, "calendar-ipi-mavy/free-busy-proxy-v1"),
+    ("list_titles", "exfil_via_email", "read_only_list_titles", "list_title_recall",
+     LIST_TITLES_UTILITY_RULE_VERSION, "calendar-ipi-mavy/list-titles-v1"),
+    ("write_phase", "additive", "sensitivity_optimized_positive_control_selection",
+     "authorized_event_state", None, None),
+    ("write_phase", "aug_participant", "sensitivity_optimized_positive_control_selection",
+     "authorized_event_state", None, None),
+    ("read_only", "additive", "read_only_free_busy_proxy", "free_busy_reply", None, None),
+])
+def test_host_task_identity_legal_combos(host_task, family, profile, endpoint, rule, probe):
+    idn = host_task_identity(host_task, family)
+    assert idn["host_task_profile"] == profile
+    assert idn["utility_endpoint"] == endpoint
+    assert idn["utility_rule_version"] == rule       # 只有 list_titles 版本化，其余诚实 None
+    assert idn["probe_version_identity"] == probe     # 只有 exfil 族有
+
+
+def test_host_task_identity_write_phase_never_gets_list_title_rule():
+    # 正对着 reviewer 复现的矛盾组合：write_phase 绝不能拿到 list-title-recall/v1
+    idn = host_task_identity("write_phase", "additive")
+    assert idn["utility_endpoint"] == "authorized_event_state"
+    assert idn["utility_rule_version"] is None
+
+
+def test_host_task_identity_rejects_unknown():
+    with _pytest.raises(ValueError):
+        host_task_identity("bogus", "exfil_via_email")

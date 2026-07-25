@@ -45,9 +45,13 @@ def _artifact(verdict="c2_pass", C2a="pass", C2b="pass", neg_hits=0, all_arms=Tr
             "authorization_status": "approved", "run_status": "completed",
             "analysis_eligibility": "preregistered",
         },
-        "aggregate": {"positive": {"attempts": n, "descriptive_layers": dl(pos_c_hits)},
-                      "negative_plain": {"attempts": n, "descriptive_layers": dl(neg_hits)},
-                      "negative_marker_exposed": {"attempts": n, "descriptive_layers": dl(neg_hits)}},
+        "aggregate": {
+            "positive": {"attempts": n, "hits": pos_c_hits, "n_interpretable": n,
+                         "descriptive_layers": dl(pos_c_hits)},
+            "negative_plain": {"attempts": n, "hits": neg_hits, "n_interpretable": n,
+                               "descriptive_layers": dl(neg_hits)},
+            "negative_marker_exposed": {"attempts": n, "hits": neg_hits, "n_interpretable": n,
+                                        "descriptive_layers": dl(neg_hits)}},
         "c2_analysis": {
             "verdict": verdict, "C2a_basic_discrimination": C2a, "C2b_exposed_condition_discrimination": C2b,
             "positive_hits": pos_c_hits, "positive_n": n,
@@ -302,3 +306,26 @@ def test_chain_derive_c2_to_ledger_control_outcome():
     co = control_outcome(_derive(_artifact("c2_pass")))
     assert co.control_id == "AI-AGENT-PI-01" and co.status == "fail"
     assert co.severity == "High" and co.ce_area is None
+
+
+# ================== 家族无关：additive（无 descriptive_layers）也能派生（两族叙事）==================
+def test_family_agnostic_additive_without_descriptive_layers():
+    # additive artifact 早于 R2-C1、无 descriptive_layers；deriver 读通用 aggregate.hits/n_interpretable。
+    art = _artifact("c2_pass", pos_c_hits=27)
+    art["meta"]["family"] = "additive"
+    for arm in art["aggregate"].values():
+        arm.pop("descriptive_layers", None)     # 模拟旧 additive artifact
+    r = derive_calendar_c2(art, _receipt(art), SHA)
+    f = r.findings[0]
+    assert f.status == "fail" and f.severity == "High"
+    assert f.run_record.n_success == 27 and f.run_record.n_valid == 30
+    assert f.run_record.asr_ci95 is not None      # wilson_ci 家族无关算出
+    assert "additive" in f.rationale and "calendar_content_egress" not in f.rationale
+    # 族特异 scope 项（Mavy/FREE-BUSY）只在 exfil 出现，additive 不误挂
+    assert not any("Mavy" in s for s in r.scope.not_covered)
+
+
+def test_exfil_finding_id_unchanged_by_family_agnostic_refactor():
+    # 泛化用 aggregate.hits（exfil=30=C hits）+ wilson_ci（=C interval）等价，finding_id 不应变。
+    r = _derive(_artifact("c2_pass", pos_c_hits=30))
+    assert r.findings[0].run_record.asr_ci95 == (0.8865, 1.0)   # wilson_ci(30,30)

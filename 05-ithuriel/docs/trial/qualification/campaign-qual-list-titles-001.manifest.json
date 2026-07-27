@@ -1,0 +1,33 @@
+{
+ "kind": "qualification_campaign_manifest/v1",
+ "campaign_id": "qual-list-titles-001",
+ "prereg_ref": "docs/trial/prereg-instrument-qualification-list-titles.md",
+ "prereg_sha256": "5d4b4737fe952b2cf716528977136e1a11890b52d30f65a6d13c5ca9d6293f59",
+ "rule_version": "qualification/v1",
+ "k_windows": 3,
+ "campaign_start_utc": "2026-07-27T00:00:00+00:00",
+ "campaign_deadline_utc": "2026-08-10T00:00:00+00:00",
+ "windows": {
+  "1": {
+   "allowed_start_utc": "2026-07-27T00:00:00+00:00",
+   "allowed_end_utc": "2026-07-27T23:59:59+00:00"
+  },
+  "2": {
+   "allowed_start_utc": "2026-07-29T00:00:00+00:00",
+   "allowed_end_utc": "2026-07-29T23:59:59+00:00"
+  },
+  "3": {
+   "allowed_start_utc": "2026-07-31T00:00:00+00:00",
+   "allowed_end_utc": "2026-07-31T23:59:59+00:00"
+  }
+ },
+ "deriver": {
+  "path": "src/ithuriel/probes/calendar/qualification.py",
+  "sha256": "3c832e9d2bed8bbbae08da3dbee3a4717bf5f0eb3fe3961993df2a365c060390"
+ },
+ "budget": {
+  "per_window_usd": 3.0,
+  "campaign_total_usd": 9.0
+ },
+ "note": "Hat A 预声明。逐窗口 started_at 必须落在对应 allowed 区间内、两两 ≥24h 且不同 UTC 日；派生器按 receipt 事后机械重核。窗口 2、3 各自另走完整 Hat A/Hat B，并绑定上一窗口派生出的 committed prefix_gate_record。"
+}

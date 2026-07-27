@@ -11,6 +11,9 @@ authorization 侧另接 campaign/prefix-gate，见 governance/execution_authoriz
 输入均为已解析的 JSON dict：
 - window：{"index": 1..3, "artifact": {...}, "receipt": {...}, "request": {...},
            "prefix_gate_record": {...}|None}
+  其中 artifact.meta 与 receipt 都须带授权时写入的 `qualification_campaign` 回显块
+  （由 `governance/execution_authorization.validate_qualification_campaign` 产出），
+  campaign 归属与 `qualification_config_hash` 重算比对靠它。
 - manifest：{"campaign_id", "campaign_start_utc", "campaign_deadline_utc",
              "windows": {i: {"allowed_start_utc", "allowed_end_utc"}}}
 - closure_record（仅 deadline 形态）：{"campaign_id","closed_at_utc","campaign_deadline_utc",
@@ -318,6 +321,45 @@ def governance_ok(window):
     return True, None
 
 
+# ---------------- campaign 归属（§7 流水线第三格）----------------
+def campaign_ok(window, manifest):
+    """窗口是否属于本 campaign 的预声明 slot。返回 (ok, reason|None)。
+
+    数据来源 = 授权时由 `governance/execution_authorization.validate_qualification_campaign`
+    写进 `artifact.meta.qualification_campaign`、再由 `write_run_receipt` 回显进 **committed
+    receipt** 的那份 campaign 块。派生器离线只读文件，故 campaign 归属只能核这份回显与 manifest
+    是否一致——**授权门管「哪份声明被授权跑了」，本函数管「跑出来的东西属不属于这个 campaign」。**
+    缺回显即 fail-closed（qualification 窗口必须带；不带的是别的跑，不该进本 campaign）。
+    """
+    rec_camp = (window.get("receipt") or {}).get("qualification_campaign")
+    meta_camp = ((window.get("artifact") or {}).get("meta") or {}).get("qualification_campaign")
+    if not isinstance(rec_camp, dict):
+        return False, "campaign 归属：receipt 缺 qualification_campaign 回显"
+    if meta_camp != rec_camp:
+        return False, "campaign 归属：artifact.meta 与 receipt 的 qualification_campaign 不一致"
+    cid = (manifest or {}).get("campaign_id")
+    if rec_camp.get("qualification_campaign_id") != cid:
+        return False, (f"campaign 归属：campaign_id={rec_camp.get('qualification_campaign_id')!r} "
+                       f"!= manifest {cid!r}")
+    if rec_camp.get("window_index") != window.get("index"):
+        return False, (f"campaign 归属：回显 window_index={rec_camp.get('window_index')!r} "
+                       f"!= {window.get('index')!r}")
+    if rec_camp.get("k_windows") != K_WINDOWS:
+        return False, f"campaign 归属：k_windows={rec_camp.get('k_windows')!r} != {K_WINDOWS}"
+    if rec_camp.get("rule_version") != RULE_VERSION:
+        return False, f"campaign 归属：rule_version={rec_camp.get('rule_version')!r} != {RULE_VERSION}"
+    ms = (manifest or {}).get("campaign_start_utc")
+    if _parse_utc(rec_camp.get("campaign_start_utc")) != _parse_utc(ms):
+        return False, "campaign 归属：回显 campaign_start_utc 与 manifest 不一致"
+    return True, None
+
+
+def declared_config_hash(window):
+    """Hat A 在授权时声明的 `qualification_config_hash`（经 campaign 回显）。"""
+    return ((window.get("receipt") or {}).get("qualification_campaign") or {}) \
+        .get("qualification_config_hash")
+
+
 # ---------------- 时间（§4/§7；receipt.started_at 为窗口锚）----------------
 def _parse_utc(s):
     if not isinstance(s, str):
@@ -355,9 +397,14 @@ def time_ok(window, manifest, other_started):
 def classify_window(window, manifest, other_started, req_proj_ref):
     """返回 {status, reason, c2, provenance, projection}。req_proj_ref = 首窗口 request 投影（跨窗口一致基准）。"""
     out = {"index": window.get("index"), "status": None, "reason": None,
-           "c2": None, "provenance": None, "projection": None}
+           "c2": None, "provenance": None, "projection": None, "config_hash": None}
     # 1) 治理绑定 + 预算 + prefix-gate
     ok, reason = governance_ok(window)
+    if not ok:
+        out.update(status=GOVERNANCE_INVALID, reason=reason)
+        return out
+    # 1b) campaign 归属（§7 流水线；归属失败与治理绑定失败同属 §6 的 governance-binding 事件）
+    ok, reason = campaign_ok(window, manifest)
     if not ok:
         out.update(status=GOVERNANCE_INVALID, reason=reason)
         return out
@@ -379,6 +426,15 @@ def classify_window(window, manifest, other_started, req_proj_ref):
         return out
     if req_proj_ref is not None and rp != req_proj_ref:
         out.update(status=CONFIG_DRIFT, reason="request-expected 跨窗口不一致")
+        return out
+    # §7：Hat A 写 `qualification_config_hash`、派生器**重算比对**（不符 fail-closed）——
+    # 否则「授权时声明的配置」与「派生器实际投影出的配置」可以各说各话。
+    declared = declared_config_hash(window)
+    recomputed = config_hash(rp)
+    out["config_hash"] = recomputed
+    if declared != recomputed:
+        out.update(status=CONFIG_DRIFT,
+                   reason=f"qualification_config_hash 声明 {str(declared)[:8]} != 重算 {recomputed[:8]}")
         return out
     # 4) provenance
     prov = provenance_check(window.get("artifact") or {})

@@ -47,9 +47,27 @@ def make_artifact(pos=26, np_=0, nm=0, *, n_interp=30, instrument_errors=0,
     return {"meta": meta, "aggregate": agg, "arms_detail": detail}
 
 
+CAMPAIGN_ID = "camp-1"
+
+
+def make_campaign(index=1, **over):
+    """授权时写进 artifact.meta、再回显进 committed receipt 的 campaign 块（步骤③）。
+
+    `qualification_config_hash` 由 Hat A 声明、派生器重算比对，故默认填真实重算值。
+    """
+    c = {"qualification_campaign_id": CAMPAIGN_ID, "window_index": index, "k_windows": 3,
+         "rule_version": q.RULE_VERSION, "campaign_start_utc": CSTART,
+         "campaign_deadline_utc": "2026-08-15T00:00:00+00:00",
+         "qualification_config_hash": None,      # None → 由 make_window 填真实重算值
+         "prereg_sha256": "prereg_sha"}
+    c.update(over)
+    return c
+
+
 def make_receipt(**over):
     r = {"authorization_status": "approved", "analysis_eligibility": "preregistered",
-         "run_status": "completed", "started_at": STARTED[1], "artifact_sha256": "x"}
+         "run_status": "completed", "started_at": STARTED[1], "artifact_sha256": "x",
+         "qualification_campaign": make_campaign()}
     r.update(over)
     return r
 
@@ -67,12 +85,18 @@ def make_request(**rt_over):
 
 
 def make_window(index, pos=26, np_=0, nm=0, *, art_over=None, rec_over=None, req_over=None,
-                with_gate=True, **art_kw):
+                with_gate=True, camp_over=None, **art_kw):
     art = make_artifact(pos, np_, nm, **art_kw)
     if art_over:
         art["meta"].update(art_over)
-    rec = make_receipt(**{"started_at": STARTED[index], **(rec_over or {})})
     req = make_request(**(req_over or {}))
+    camp = make_campaign(index, **(camp_over or {}))
+    if camp.get("qualification_config_hash") is None:      # 默认 = 真实重算值（一致路径）
+        rp, _ = q.request_projection(req)
+        camp["qualification_config_hash"] = q.config_hash(rp)
+    art["meta"]["qualification_campaign"] = copy.deepcopy(camp)
+    rec = make_receipt(**{"started_at": STARTED[index], "qualification_campaign": camp,
+                          **(rec_over or {})})
     w = {"index": index, "artifact": art, "receipt": rec, "request": req, "prefix_gate_record": None}
     if index >= 2 and with_gate:
         w["prefix_gate_record"] = {"campaign_status": "in_progress",
@@ -256,3 +280,50 @@ def test_reject_run_after_terminal():
 def test_reject_duplicate_index():
     with pytest.raises(q.QualificationInputError):
         q.derive_qualification(make_manifest(), [make_window(1), make_window(1)])
+
+
+# ---------------- campaign 归属 + config hash 重算（§7 流水线，步骤③接上授权门回显）----------------
+def test_campaign_id_mismatch_is_governance_invalid():
+    w = make_window(1, camp_over={"qualification_campaign_id": "other-campaign"})
+    r = q.derive_qualification(make_manifest(), [w])
+    assert r["windows"][0]["status"] == q.GOVERNANCE_INVALID
+    assert "campaign_id" in r["windows"][0]["reason"]
+
+
+def test_campaign_echo_missing_is_governance_invalid():
+    # qualification 窗口必须带授权门写的 campaign 回显；没有就不是本 campaign 的窗口。
+    w = make_window(1)
+    del w["receipt"]["qualification_campaign"]
+    r = q.derive_qualification(make_manifest(), [w])
+    assert r["windows"][0]["status"] == q.GOVERNANCE_INVALID
+    assert "缺 qualification_campaign" in r["windows"][0]["reason"]
+
+
+def test_campaign_echo_artifact_receipt_divergence_is_governance_invalid():
+    w = make_window(2)
+    w["artifact"]["meta"]["qualification_campaign"]["window_index"] = 3   # 与 receipt 不一致
+    r = q.derive_qualification(make_manifest(), [make_window(1), w])
+    assert r["windows"][1]["status"] == q.GOVERNANCE_INVALID
+    assert "不一致" in r["windows"][1]["reason"]
+
+
+def test_campaign_window_index_must_match_slot():
+    w = make_window(1, camp_over={"window_index": 2})
+    r = q.derive_qualification(make_manifest(), [w])
+    assert r["windows"][0]["status"] == q.GOVERNANCE_INVALID
+    assert "window_index" in r["windows"][0]["reason"]
+
+
+def test_declared_config_hash_must_equal_recomputed():
+    # Hat A 声明的 qualification_config_hash 与派生器重算不符 → config_drift（§7 fail-closed）。
+    w = make_window(1, camp_over={"qualification_config_hash": "0" * 64})
+    r = q.derive_qualification(make_manifest(), [w])
+    assert r["windows"][0]["status"] == q.CONFIG_DRIFT
+    assert "qualification_config_hash" in r["windows"][0]["reason"]
+
+
+def test_config_hash_recomputed_and_reported_on_pass():
+    r = q.derive_qualification(make_manifest(), [make_window(1)])
+    win = r["windows"][0]
+    assert win["status"] == q.VALID_C2_PASS
+    assert win["config_hash"] == q.config_hash(win["projection"])

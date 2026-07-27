@@ -2,11 +2,15 @@
 
 覆盖不需要真实 git 的纯逻辑：逐 trial deadline、run 级/trial 级完成与排除语义、
 以及搬迁后 `_PROJECT_ROOT` 必须仍解析到含 scripts/ 的项目根（否则授权链哈希材料时会读错文件）。
-git-backed 的 validate_execution_authorization 由 runner --self-test 端到端覆盖。
+项目仓库上的 git-backed validate_execution_authorization 由 runner --self-test 端到端覆盖；
+**instrument qualification campaign / 前缀门**（预注册 §7/§9）另在**临时 git 仓库**上端到端覆盖
+（见文末一节）——那些门的要害恰是字节 + commit 顺序，纯 mock 证不出来。
 """
 import datetime
+import json
 import os
 import shutil
+import subprocess
 
 import pytest
 
@@ -317,3 +321,315 @@ def test_provider_cap_fail_closed_on_missing_required_key():
         EA._enforce_provider_budget_cap(
             {"external_budget_control": _cap_rule()},
             {"provider_cap_attestation": _cap_att(observed_at="")})
+
+
+# =========== instrument qualification campaign + 前缀门（预注册 §7/§9，落码步骤③）===========
+# 全部跑在 **临时 git 仓库**上：这些门保证的就是「字节一致 + commit 顺序」，用 mock 证不出来。
+# 无网络、无模型、无计费。
+
+QUAL_NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.timezone.utc)
+CAMPAIGN_ID = "qual-list-titles-001"
+DERIVER_PATH = "src/ithuriel/probes/calendar/qualification.py"
+PREREG_PATH = "docs/trial/prereg-instrument-qualification-list-titles.md"
+GATE_PATH = "docs/trial/qualification/prefix-gate-001-w1.json"
+REQ_PATH = "docs/trial/execution-request-qual-001-w2.json"
+APR_PATH = "docs/trial/approval-qual-001-w2.json"
+
+
+def _git_run(repo, *args):
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _write(repo, rel, text):
+    p = os.path.join(repo, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(text)
+    return p
+
+
+def _write_json(repo, rel, obj):
+    return _write(repo, rel, json.dumps(obj, ensure_ascii=False, indent=1))
+
+
+def _commit(repo, paths, msg):
+    _git_run(repo, "add", "--", *paths)
+    _git_run(repo, "commit", "-m", msg, "--no-gpg-sign")
+
+
+def _gate_record(**over):
+    rec = {"campaign_id": CAMPAIGN_ID, "rule_version": EA.QUAL_RULE_VERSION,
+           "deriver_sha256": None,           # 由 builder 填成实际派生器材料哈希
+           "campaign_status": "in_progress", "next_window_authorizable": True,
+           "covers": [1],
+           "window_inputs": {"1": {"artifact_sha256": "a" * 64, "receipt_sha256": "r" * 64}}}
+    rec.update(over)
+    return rec
+
+
+def _build_qual_repo(tmp_path, *, window_index=2, campaign_over=None, gate_over=None,
+                     drop_campaign=False, gate_after_request=False, budget=3.0,
+                     declared_gate_sha=None, campaign_del=()):
+    """临时仓库 + 完整 Hat A→Hat B 链；默认 = 窗口 2、带合法前缀门。返回 (repo, req, apr, runtime)。"""
+    repo = str(tmp_path / "repo")
+    os.makedirs(repo)
+    _git_run(repo, "init", "-q")
+    _git_run(repo, "config", "user.email", "test@example.invalid")
+    _git_run(repo, "config", "user.name", "test")
+
+    _write(repo, "scripts/run_calendar_probe.py", "# dummy runner\n")
+    _write(repo, PREREG_PATH, "# dummy prereg (FROZEN)\n")
+    _write(repo, DERIVER_PATH, "# dummy deriver\n")
+    mats = ["scripts/run_calendar_probe.py", PREREG_PATH, DERIVER_PATH]
+    materials = [{"path": p, "sha256": EA._file_sha(repo, p)} for p in sorted(mats)]
+    deriver_sha = EA._file_sha(repo, DERIVER_PATH)
+
+    gate = _gate_record(**(gate_over or {}))
+    if gate.get("deriver_sha256") is None:
+        gate["deriver_sha256"] = deriver_sha
+    _write_json(repo, GATE_PATH, gate)
+
+    if gate_after_request:
+        _commit(repo, mats, "materials")          # 前缀门先不进历史
+    else:
+        _commit(repo, mats + [GATE_PATH], "materials + prefix gate")
+
+    runtime = {"runner": "scripts/run_calendar_probe.py", "materials": materials,
+               "max_runtime_minutes": 90.0, "measurement_schema_version": 4,
+               "experiment_mode": "confirm", "phase": "main",
+               "analysis_eligibility": "preregistered", "target": "agentdojo-workspace-mock",
+               "target_fidelity": "mock", "provider": "openrouter", "model": "openai/gpt-4o-mini",
+               "pinned_provider": "OpenAI", "budget_cap_usd": budget}
+    campaign = {
+        "qualification_campaign_id": CAMPAIGN_ID,
+        "prereg_sha256": EA._file_sha(repo, PREREG_PATH),
+        "window_index": window_index, "k_windows": 3,
+        "campaign_start_utc": "2026-08-01T00:00:00+00:00",
+        "windows": {"1": {"allowed_start_utc": "2026-08-01T00:00:00+00:00",
+                          "allowed_end_utc": "2026-08-01T23:59:59+00:00"},
+                    "2": {"allowed_start_utc": "2026-08-03T00:00:00+00:00",
+                          "allowed_end_utc": "2026-08-03T23:59:59+00:00"},
+                    "3": {"allowed_start_utc": "2026-08-05T00:00:00+00:00",
+                          "allowed_end_utc": "2026-08-05T23:59:59+00:00"}},
+        "rule_version": EA.QUAL_RULE_VERSION,
+        "deriver": {"path": DERIVER_PATH, "sha256": deriver_sha},
+        "qualification_config_hash": "c" * 64,
+    }
+    if window_index >= 2:
+        campaign["prefix_gate_record"] = {
+            "path": GATE_PATH, "sha256": declared_gate_sha or EA._file_sha(repo, GATE_PATH)}
+    campaign.update(campaign_over or {})
+    for key in campaign_del:
+        campaign.pop(key, None)
+
+    request = {"request_id": "qual-001-w2", "runtime": runtime, "materials": materials,
+               "allowed_side_effects": ["mock state"], "prohibited_side_effects": ["real delivery"],
+               "roe_or_policy_ref": "docs/adr/0022-solo-developer-two-hat-governance.md",
+               "prereg_ref": PREREG_PATH}
+    if not drop_campaign:
+        request["qualification_campaign"] = campaign
+    req_hash = EA._sha(request)
+    _write_json(repo, REQ_PATH, {"request": request, "execution_request_hash": req_hash})
+    if gate_after_request:
+        _commit(repo, [REQ_PATH], "hat A request")
+        _commit(repo, [GATE_PATH], "prefix gate (LATE — 冻结之后才产出)")
+    else:
+        _commit(repo, [REQ_PATH], "hat A request")
+
+    approval = {"decision": "approve", "authorization_mode": "self_authorized_solo",
+                "role_separation": "procedural", "person_independence": "none",
+                "independence_verification": "not_applicable",
+                "conflict_of_interest": "self_review",
+                "approval_scope": "internal_t0_t2_development",
+                "approved_by": "l9g", "approval_role": "execution_authorizer",
+                "approved_target": runtime["target"], "approved_provider": runtime["provider"],
+                "budget_cap_usd": budget, "adversarial_review": "none",
+                "execution_request_hash": req_hash,
+                "valid_from": "2026-08-03T11:00:00+00:00",
+                "valid_until": "2026-08-03T20:00:00+00:00"}
+    _write_json(repo, APR_PATH, {"approval": approval})
+    _commit(repo, [APR_PATH], "hat B approval")
+    return repo, os.path.join(repo, REQ_PATH), os.path.join(repo, APR_PATH), runtime
+
+
+def _validate(tmp_path, **kw):
+    repo, req, apr, rt = _build_qual_repo(tmp_path, **kw)
+    return EA.validate_execution_authorization(req, apr, rt, now=QUAL_NOW, repo_root=repo)
+
+
+# ---------------- 正路：窗口 2 带合法前缀门 → 通过并回显 campaign ----------------
+def test_qualification_window2_passes_and_echoes_campaign(tmp_path):
+    meta = _validate(tmp_path)
+    camp = meta["qualification_campaign"]
+    assert camp["qualification_campaign_id"] == CAMPAIGN_ID
+    assert (camp["window_index"], camp["k_windows"]) == (2, 3)
+    assert camp["campaign_deadline_utc"] == "2026-08-15T00:00:00+00:00"   # start + 14d，机械算
+    assert camp["prefix_gate_record"]["covers"] == [1]
+    assert camp["prefix_gate_record"]["path"] == GATE_PATH
+
+
+def test_receipt_echoes_qualification_campaign(tmp_path):
+    art = tmp_path / "run.json"
+    art.write_text('{"x":1}', encoding="utf-8")
+    camp = {"qualification_campaign_id": CAMPAIGN_ID, "window_index": 2}
+    p = EA.write_run_receipt(str(art), {"qualification_campaign": camp}, {"verdict": "c2_pass"},
+                             "2026-08-03T12:00:00Z", out_dir=str(tmp_path / "receipts"))
+    assert json.loads(open(p, encoding="utf-8").read())["qualification_campaign"] == camp
+
+
+def test_request_without_campaign_is_backward_compatible(tmp_path):
+    # 既有 C2/sweep/pilot 的 request 不含该块 → 行为不变、字段为 None（不臆造）。
+    meta = _validate(tmp_path, window_index=1, drop_campaign=True)
+    assert meta["qualification_campaign"] is None
+    assert meta["authorization_status"] == "approved"
+
+
+def test_window1_needs_no_prefix_gate(tmp_path):
+    meta = _validate(tmp_path, window_index=1,
+                     campaign_over={"windows": {  # 窗口 1 区间挪到 now 所在日，其余不变
+                         "1": {"allowed_start_utc": "2026-08-03T00:00:00+00:00",
+                               "allowed_end_utc": "2026-08-03T23:59:59+00:00"},
+                         "2": {"allowed_start_utc": "2026-08-05T00:00:00+00:00",
+                               "allowed_end_utc": "2026-08-05T23:59:59+00:00"},
+                         "3": {"allowed_start_utc": "2026-08-07T00:00:00+00:00",
+                               "allowed_end_utc": "2026-08-07T23:59:59+00:00"}}})
+    assert meta["qualification_campaign"]["prefix_gate_record"] is None
+
+
+def test_window1_must_not_bind_prefix_gate(tmp_path):
+    with pytest.raises(AuthorizationError, match="窗口 1 不得绑定 prefix_gate_record"):
+        _validate(tmp_path, window_index=1,
+                  campaign_over={"prefix_gate_record": {"path": GATE_PATH, "sha256": "x" * 64},
+                                 "windows": {
+                                     "1": {"allowed_start_utc": "2026-08-03T00:00:00+00:00",
+                                           "allowed_end_utc": "2026-08-03T23:59:59+00:00"},
+                                     "2": {"allowed_start_utc": "2026-08-05T00:00:00+00:00",
+                                           "allowed_end_utc": "2026-08-05T23:59:59+00:00"},
+                                     "3": {"allowed_start_utc": "2026-08-07T00:00:00+00:00",
+                                           "allowed_end_utc": "2026-08-07T23:59:59+00:00"}}})
+
+
+# ---------------- 前缀门：缺失 / 不可授权 / 覆盖不符 / 终局 / 字节 / 顺序 ----------------
+def test_missing_prefix_gate_rejects_window2(tmp_path):
+    with pytest.raises(AuthorizationError, match="缺 prefix_gate_record"):
+        _validate(tmp_path, campaign_del=("prefix_gate_record",))
+
+
+def test_prefix_gate_not_authorizable_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="next_window_authorizable"):
+        _validate(tmp_path, gate_over={"next_window_authorizable": False})
+
+
+def test_prefix_gate_terminal_status_rejects(tmp_path):
+    # 前缀已终局（如 terminal_not_qualified）→ 预注册提前停止：不得再花钱跑后续窗口。
+    with pytest.raises(AuthorizationError, match="campaign_status"):
+        _validate(tmp_path, gate_over={"campaign_status": "terminal_not_qualified"})
+
+
+def test_prefix_gate_covers_must_be_exactly_1_to_w_minus_1(tmp_path):
+    with pytest.raises(AuthorizationError, match="covers"):
+        _validate(tmp_path, gate_over={"covers": [1, 2],
+                                       "window_inputs": {
+                                           "1": {"artifact_sha256": "a" * 64, "receipt_sha256": "r" * 64},
+                                           "2": {"artifact_sha256": "b" * 64, "receipt_sha256": "s" * 64}}})
+
+
+def test_prefix_gate_window_inputs_must_carry_hashes(tmp_path):
+    with pytest.raises(AuthorizationError, match="缺输入哈希"):
+        _validate(tmp_path, gate_over={"window_inputs": {"1": {"artifact_sha256": "a" * 64}}})
+
+
+def test_prefix_gate_declared_hash_mismatch_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="三方哈希不一致"):
+        _validate(tmp_path, declared_gate_sha="d" * 64)
+
+
+def test_prefix_gate_from_other_deriver_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="另一版派生器"):
+        _validate(tmp_path, gate_over={"deriver_sha256": "e" * 64})
+
+
+def test_prefix_gate_campaign_id_mismatch_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="campaign_id 与本窗口 campaign 不符"):
+        _validate(tmp_path, gate_over={"campaign_id": "other-campaign"})
+
+
+def test_prefix_gate_must_be_committed_before_hat_a_freeze(tmp_path):
+    # ⭐ 要害：前缀验证必须**先于**本窗口 Hat A 冻结发生；事后补一份记录不算门。
+    with pytest.raises(AuthorizationError, match="prefix_gate → 窗口 2 Hat A request"):
+        _validate(tmp_path, gate_after_request=True)
+
+
+# ---------------- campaign 块自身的机械门 ----------------
+def test_deriver_must_be_governed_material(tmp_path):
+    with pytest.raises(AuthorizationError, match="未列入受管辖材料"):
+        _validate(tmp_path, campaign_over={"deriver": {"path": "src/ithuriel/probes/calendar/c2.py",
+                                                       "sha256": "f" * 64}})
+
+
+def test_deriver_sha_must_match_material_declaration(tmp_path):
+    with pytest.raises(AuthorizationError, match="deriver.sha256 与受管辖材料声明不一致"):
+        _validate(tmp_path, campaign_over={"deriver": {"path": DERIVER_PATH, "sha256": "f" * 64}})
+
+
+def test_prereg_sha_must_match_governed_prereg(tmp_path):
+    with pytest.raises(AuthorizationError, match="prereg_sha256 与受管辖 prereg 哈希不符"):
+        _validate(tmp_path, campaign_over={"prereg_sha256": "9" * 64})
+
+
+def test_k_windows_frozen_at_three(tmp_path):
+    with pytest.raises(AuthorizationError, match="k_windows"):
+        _validate(tmp_path, campaign_over={"k_windows": 2})
+
+
+def test_window_index_out_of_range_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="window_index"):
+        _validate(tmp_path, campaign_over={"window_index": 4})
+
+
+def test_windows_must_cover_exactly_1_to_k(tmp_path):
+    with pytest.raises(AuthorizationError, match="必须精确覆盖 1..3"):
+        _validate(tmp_path, campaign_over={"windows": {
+            "1": {"allowed_start_utc": "2026-08-01T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-01T23:59:59+00:00"},
+            "2": {"allowed_start_utc": "2026-08-03T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-03T23:59:59+00:00"}}})
+
+
+def test_declared_interval_outside_campaign_validity_rejects(tmp_path):
+    with pytest.raises(AuthorizationError, match="越出 campaign 有效期"):
+        _validate(tmp_path, campaign_over={"windows": {
+            "1": {"allowed_start_utc": "2026-08-01T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-01T23:59:59+00:00"},
+            "2": {"allowed_start_utc": "2026-08-03T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-03T23:59:59+00:00"},
+            "3": {"allowed_start_utc": "2026-08-20T00:00:00+00:00",       # > start + 14d
+                  "allowed_end_utc": "2026-08-20T23:59:59+00:00"}}})
+
+
+def test_now_outside_declared_window_interval_rejects(tmp_path):
+    # 跑前门：当前时刻不在本窗口预声明区间 → 拒开窗口（派生器事后再按 started_at 重核）。
+    with pytest.raises(AuthorizationError, match="不在窗口 2 的预声明区间"):
+        _validate(tmp_path, campaign_over={"windows": {
+            "1": {"allowed_start_utc": "2026-08-01T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-01T23:59:59+00:00"},
+            "2": {"allowed_start_utc": "2026-08-04T00:00:00+00:00",       # now=08-03 落在外
+                  "allowed_end_utc": "2026-08-04T23:59:59+00:00"},
+            "3": {"allowed_start_utc": "2026-08-05T00:00:00+00:00",
+                  "allowed_end_utc": "2026-08-05T23:59:59+00:00"}}})
+
+
+def test_budget_predicate_enforced_at_authorization(tmp_path):
+    # 每窗口 $3（=300 分）；$5 的 request 在授权门就被拒，不必等到事后派生。
+    with pytest.raises(AuthorizationError, match="预算谓词不符"):
+        _validate(tmp_path, budget=5.0)
+
+
+def test_missing_campaign_field_fails_closed(tmp_path):
+    with pytest.raises(AuthorizationError, match="缺必填字段"):
+        _validate(tmp_path, campaign_del=("qualification_config_hash",))
+
+
+def test_rule_version_must_match_frozen_deriver(tmp_path):
+    with pytest.raises(AuthorizationError, match="rule_version"):
+        _validate(tmp_path, campaign_over={"rule_version": "qualification/v0"})

@@ -8,6 +8,10 @@ Hat A 冻结的不可变 execution request、Hat B 后续独立 commit 的 appro
 ⚠ git 只是**顺序锚点、不是可信时间戳**（本地时间可回填、历史可重写）。授权门保证「冻结的那份
 代码跑了」，**不保证「那份代码实现了冻结的那份设计」**——hash 管字节、管不了语义，语义只有测试能管。
 
+instrument qualification 扩展（预注册 §7/§9，落码步骤③）：request 可冻结 `qualification_campaign`
+块（campaign 归属、逐窗口预声明区间、派生器身份、w≥2 的 `prefix_gate_record` 引用），由
+`validate_qualification_campaign` fail-closed 核。不含该块的既有 request 行为完全不变。
+
 纯逻辑 + 受控 subprocess(git) + 文件读；不碰 agentdojo、不调模型。_sha 从 oracle 复用
 （证据完整性与执行请求哈希共用的内容寻址原语）。
 """
@@ -166,6 +170,15 @@ def verify_env_matches_lock(repo_root=None):
             "lock_sync": _verify_lock_sync(repo_root),
             "boundary": "version-level sync only; not byte-level package-file integrity"}
 from ithuriel.probes.calendar.payload import MEASUREMENT_SCHEMA_VERSION, CELLS
+# instrument qualification 的常量/判据一律从派生器模块 import（单一真相源；此处**不得**重定义）。
+from ithuriel.probes.calendar.qualification import (
+    RULE_VERSION as QUAL_RULE_VERSION,
+    K_WINDOWS as QUAL_K_WINDOWS,
+    CAMPAIGN_MAX_DAYS as QUAL_CAMPAIGN_MAX_DAYS,
+    BUDGET_CENTS_PER_WINDOW as QUAL_BUDGET_CENTS_PER_WINDOW,
+    BUDGET_CENTS_CAMPAIGN as QUAL_BUDGET_CENTS_CAMPAIGN,
+    budget_ok as qual_budget_ok,
+)
 
 # 本模块从 scripts/run_calendar_probe.py 搬入 src/ithuriel/governance/ 后，默认 repo_root 须指向
 # 项目根（含 scripts/ 与 docs/trial/ 的 05-ithuriel/）——即本文件上溯四级目录。原代码用 __file__
@@ -309,6 +322,9 @@ def write_run_receipt(artifact_path, meta, primary, started_at, out_dir="docs/tr
         "deadline_utc": meta.get("deadline_utc"),
         "run_status": meta.get("run_status"),
         "termination_reason": meta.get("termination_reason"),
+        # instrument qualification：campaign 归属 + 前缀门核验结果进 committed receipt，
+        # 使派生器（离线、只读 receipt/artifact/request）能核 campaign 归属而不必重跑 git 层。
+        "qualification_campaign": meta.get("qualification_campaign"),
     }
     p = os.path.join(out_dir, os.path.basename(artifact_path).replace(".json", ".receipt.json"))
     with open(p, "w", encoding="utf-8") as f:
@@ -499,6 +515,235 @@ def _enforce_provider_budget_cap(request, approval, now=None):
             "evidence_ref": att.get("evidence_ref")}
 
 
+# ---------------- instrument qualification campaign（预注册 §7/§9，落码步骤③）----------------
+# FROZEN 契约：docs/trial/prereg-instrument-qualification-list-titles.md。
+# 本节把「campaign 归属」与「前缀门」从 procedure 落成 machine：Hat A 在 request 里冻结
+# `qualification_campaign` 块，授权门 fail-closed 核；**w≥2 必须绑定一份已 commit 且严格早于本窗口
+# Hat A request commit 的 `prefix_gate_record`**（派生器对前缀 1..w-1 的输出），缺失、哈希不符、
+# 覆盖范围不对或 `next_window_authorizable != true` 一律拒开窗口。
+#
+# **边界（务必守）**：本门管**字节、顺序、归属、区间**——它保证「被授权的那份 campaign 声明与那份前缀门
+# 记录参与了运行」，**不保证派生器的判定语义正确**（语义由 qualification.py + golden 测试管，见 ADR-0022
+# 「授权门管字节不管语义」）。跨窗口 ≥24h / 不同 UTC 日 / started_at 落区间等由派生器**事后**按 receipt
+# 重核；此处只做**跑前**能机器判定的那部分：本窗口 `allowed_start ≤ now ≤ allowed_end`。
+# 不额外要求 `now + max_runtime ≤ allowed_end`——那比 FROZEN 契约（只绑 started_at）更严，
+# 会拒掉契约允许的运行。
+_QUAL_REQUIRED_KEYS = ("qualification_campaign_id", "prereg_sha256", "window_index", "k_windows",
+                       "campaign_start_utc", "windows", "rule_version", "deriver",
+                       "qualification_config_hash")
+_PREFIX_GATE_REQUIRED_KEYS = ("campaign_id", "rule_version", "deriver_sha256", "campaign_status",
+                              "next_window_authorizable", "covers", "window_inputs")
+_PREFIX_GATE_INPUT_HASHES = ("artifact_sha256", "receipt_sha256")
+
+
+def _nonempty_str(v):
+    return isinstance(v, str) and bool(v.strip())
+
+
+def _plain_int(v):
+    """真整数（拒 bool——`True == 1` 会让 `window_index=True` 混过 1..k 检查）。"""
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _utc_field(value, label):
+    """带字段名的严格时间读取（`_utc` 的报错措辞是给 valid_from/valid_until 的）。"""
+    try:
+        return _utc(value)
+    except AuthorizationError as exc:
+        raise AuthorizationError(f"{label}：{exc}") from exc
+
+
+def _campaign_intervals(camp, k, campaign_start, campaign_deadline):
+    """预声明逐窗口区间 → {window_index: (start, end)}。键必须**精确**是 1..k。
+
+    JSON 对象键是字符串，故按 int 归一后比对集合；缺一个 / 多一个 / 重复 / 区间倒挂 / 越出
+    [campaign_start, campaign_start+14d] 一律 fail-closed（防「预声明区间形同虚设」）。
+    """
+    raw = camp.get("windows")
+    if not isinstance(raw, dict):
+        raise AuthorizationError("qualification_campaign.windows 必须是 {window_index: {...}} 对象")
+    keyed = {}
+    for key, val in raw.items():
+        try:
+            idx = int(key)
+        except (TypeError, ValueError) as exc:
+            raise AuthorizationError(f"qualification_campaign.windows 键非整数：{key!r}") from exc
+        if idx in keyed:
+            raise AuthorizationError(f"qualification_campaign.windows 重复窗口 {idx}")
+        keyed[idx] = val
+    if sorted(keyed) != list(range(1, k + 1)):
+        raise AuthorizationError(
+            f"qualification_campaign.windows 必须精确覆盖 1..{k}，实际 {sorted(keyed)}")
+    out = {}
+    for idx, val in keyed.items():
+        if not isinstance(val, dict):
+            raise AuthorizationError(f"窗口 {idx} 的预声明区间必须是对象")
+        start = _utc_field(val.get("allowed_start_utc"), f"窗口 {idx} allowed_start_utc")
+        end = _utc_field(val.get("allowed_end_utc"), f"窗口 {idx} allowed_end_utc")
+        if start > end:
+            raise AuthorizationError(f"窗口 {idx} 预声明区间倒挂：{start} > {end}")
+        if start < campaign_start or end > campaign_deadline:
+            raise AuthorizationError(
+                f"窗口 {idx} 预声明区间越出 campaign 有效期 "
+                f"[{campaign_start.isoformat()}, {campaign_deadline.isoformat()}]")
+        out[idx] = (start, end)
+    return out
+
+
+def _verify_prefix_gate_record(camp, window_index, repo_root, request_commit, approval_commit):
+    """w≥2 的前缀门核验（预注册 §7「procedure→machine」那一条）。
+
+    三层：**字节**（声明 == 当前 == approval_commit 下的 blob，与受管辖材料同一套三方哈希）、
+    **顺序**（记录所在 commit 严格早于本窗口 Hat A 的 request commit——前缀验证必须先于冻结发生，
+    否则「跑下一窗口前先验前缀」又退回可跳过的 procedure）、**内容**（campaign 归属、派生器身份、
+    `campaign_status=in_progress` ∧ `next_window_authorizable=true` ∧ `covers == 1..w-1` ∧
+    逐窗口输入哈希齐全）。
+    """
+    ref = camp.get("prefix_gate_record")
+    if not isinstance(ref, dict) or not _nonempty_str(ref.get("path")) \
+            or not _nonempty_str(ref.get("sha256")):
+        raise AuthorizationError(
+            f"窗口 {window_index} 缺 prefix_gate_record 引用（须 path + sha256）——w≥2 拒开窗口")
+    path = ref["path"]
+    _assert_tracked_and_clean(repo_root, [path])
+    current = _file_sha(repo_root, path)
+    blob = _blob_sha_at(repo_root, approval_commit, path)
+    if not (ref["sha256"] == current == blob):
+        raise AuthorizationError(
+            f"prefix_gate_record {path} 三方哈希不一致（声明 {str(ref['sha256'])[:8]} / "
+            f"当前 {current[:8]} / 批准时 {blob[:8]}）")
+    gate_commit = _last_commit_touching(repo_root, path)
+    _assert_strict_ancestor(repo_root, gate_commit, request_commit,
+                            f"prefix_gate → 窗口 {window_index} Hat A request")
+
+    rec = _load_json(os.path.join(repo_root, path), "prefix_gate_record")
+    missing = [k for k in _PREFIX_GATE_REQUIRED_KEYS if k not in rec]
+    if missing:
+        raise AuthorizationError(f"prefix_gate_record 缺必填字段 {missing}（fail-closed）")
+    if rec["rule_version"] != QUAL_RULE_VERSION:
+        raise AuthorizationError(
+            f"prefix_gate_record.rule_version={rec['rule_version']!r} != {QUAL_RULE_VERSION!r}")
+    if rec["campaign_id"] != camp["qualification_campaign_id"]:
+        raise AuthorizationError("prefix_gate_record.campaign_id 与本窗口 campaign 不符")
+    if rec["deriver_sha256"] != camp["deriver"]["sha256"]:
+        raise AuthorizationError(
+            "prefix_gate_record 由另一版派生器产出（deriver_sha256 与本窗口冻结的不符）")
+    if rec["campaign_status"] != "in_progress":
+        raise AuthorizationError(
+            f"prefix_gate_record.campaign_status={rec['campaign_status']!r} != in_progress——"
+            "前缀已终局，拒开后续窗口")
+    if rec["next_window_authorizable"] is not True:
+        raise AuthorizationError("prefix_gate_record.next_window_authorizable != true——拒开窗口")
+    expected_covers = list(range(1, window_index))
+    if list(rec["covers"] or []) != expected_covers:
+        raise AuthorizationError(
+            f"prefix_gate_record.covers={rec['covers']!r} != {expected_covers}（须恰好覆盖 1..w-1）")
+    inputs = rec["window_inputs"]
+    if not isinstance(inputs, dict):
+        raise AuthorizationError("prefix_gate_record.window_inputs 必须是 {window_index: {...}} 对象")
+    try:
+        keyed = {int(k): v for k, v in inputs.items()}
+    except (TypeError, ValueError) as exc:
+        raise AuthorizationError("prefix_gate_record.window_inputs 键非整数") from exc
+    if sorted(keyed) != expected_covers:
+        raise AuthorizationError(
+            f"prefix_gate_record.window_inputs 覆盖 {sorted(keyed)} != {expected_covers}")
+    for idx in expected_covers:
+        entry = keyed[idx]
+        if not isinstance(entry, dict) or any(not _nonempty_str(entry.get(h))
+                                              for h in _PREFIX_GATE_INPUT_HASHES):
+            raise AuthorizationError(
+                f"prefix_gate_record.window_inputs[{idx}] 缺输入哈希 {list(_PREFIX_GATE_INPUT_HASHES)}")
+    return {"path": path, "sha256": ref["sha256"], "gate_commit": gate_commit,
+            "covers": expected_covers,
+            "window_inputs": {str(i): keyed[i] for i in expected_covers}}
+
+
+def validate_qualification_campaign(request, expected_runtime, repo_root, request_commit,
+                                    approval_commit, now=None):
+    """校验 request 冻结的 `qualification_campaign` 块；无该块（非 qualification 跑）→ None。
+
+    向后兼容：既有 C2 / sweep / pilot 的 request 不含该块，行为完全不变。
+    """
+    camp = request.get("qualification_campaign")
+    if camp is None:
+        return None
+    if not isinstance(camp, dict):
+        raise AuthorizationError("qualification_campaign 必须是对象（fail-closed）")
+    missing = [k for k in _QUAL_REQUIRED_KEYS if camp.get(k) in (None, "", [], {})]
+    if missing:
+        raise AuthorizationError(f"qualification_campaign 缺必填字段 {missing}（fail-closed）")
+    if camp["rule_version"] != QUAL_RULE_VERSION:
+        raise AuthorizationError(
+            f"qualification_campaign.rule_version={camp['rule_version']!r} != {QUAL_RULE_VERSION!r}")
+    k = camp["k_windows"]
+    if not _plain_int(k) or k != QUAL_K_WINDOWS:
+        raise AuthorizationError(f"k_windows={k!r} != 预注册冻结的 {QUAL_K_WINDOWS}")
+    w = camp["window_index"]
+    if not _plain_int(w) or not (1 <= w <= k):
+        raise AuthorizationError(f"window_index={w!r} 不在 1..{k}")
+
+    # 派生器身份：必须是**受管辖材料**里的同一份字节（三方哈希由材料门覆盖），并与 campaign 声明一致，
+    # 使「哪一版派生器被授权用于本窗口」可审计（预注册 §7 步骤⑤）。
+    deriver = camp["deriver"]
+    if not isinstance(deriver, dict) or not _nonempty_str(deriver.get("path")) \
+            or not _nonempty_str(deriver.get("sha256")):
+        raise AuthorizationError("qualification_campaign.deriver 必须含 path + sha256")
+    mats = {m.get("path"): m.get("sha256") for m in request.get("materials", [])
+            if isinstance(m, dict)}
+    if deriver["path"] not in mats:
+        raise AuthorizationError(
+            f"派生器 {deriver['path']} 未列入受管辖材料 —— 它不会进三方哈希")
+    if mats[deriver["path"]] != deriver["sha256"]:
+        raise AuthorizationError("qualification_campaign.deriver.sha256 与受管辖材料声明不一致")
+    # prereg 完整 SHA-256 必须就是受管辖材料里那份 prereg 的哈希（防 campaign 指向另一份预注册）
+    if camp["prereg_sha256"] != mats.get(request.get("prereg_ref")):
+        raise AuthorizationError("qualification_campaign.prereg_sha256 与受管辖 prereg 哈希不符")
+
+    # 预算谓词：复用派生器里冻结的 $3/窗口判据（单一真相源），再机械核 campaign 总额 ≤ $9。
+    ok, reason = qual_budget_ok({"runtime": {"budget_cap_usd": expected_runtime.get("budget_cap_usd")}})
+    if not ok:
+        raise AuthorizationError(f"qualification 预算谓词不符：{reason}")
+    if k * QUAL_BUDGET_CENTS_PER_WINDOW > QUAL_BUDGET_CENTS_CAMPAIGN:
+        raise AuthorizationError(
+            f"campaign 预算上限被突破：{k} × {QUAL_BUDGET_CENTS_PER_WINDOW} 分 > "
+            f"{QUAL_BUDGET_CENTS_CAMPAIGN} 分")
+
+    campaign_start = _utc_field(camp["campaign_start_utc"], "campaign_start_utc")
+    campaign_deadline = campaign_start + datetime.timedelta(days=QUAL_CAMPAIGN_MAX_DAYS)
+    intervals = _campaign_intervals(camp, k, campaign_start, campaign_deadline)
+    allowed_start, allowed_end = intervals[w]
+    instant = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(datetime.timezone.utc)
+    if not (allowed_start <= instant <= allowed_end):
+        raise AuthorizationError(
+            f"当前时刻不在窗口 {w} 的预声明区间 "
+            f"[{allowed_start.isoformat()}, {allowed_end.isoformat()}] 内 —— 拒开窗口")
+
+    gate = None
+    if w == 1:
+        if camp.get("prefix_gate_record") is not None:
+            raise AuthorizationError("窗口 1 不得绑定 prefix_gate_record（无前缀可验）")
+    else:
+        gate = _verify_prefix_gate_record(camp, w, repo_root, request_commit, approval_commit)
+    return {
+        "qualification_campaign_id": camp["qualification_campaign_id"],
+        "window_index": w,
+        "k_windows": k,
+        "rule_version": camp["rule_version"],
+        "deriver": {"path": deriver["path"], "sha256": deriver["sha256"]},
+        "qualification_config_hash": camp["qualification_config_hash"],
+        "prereg_sha256": camp["prereg_sha256"],
+        "campaign_start_utc": campaign_start.isoformat(),
+        "campaign_deadline_utc": campaign_deadline.isoformat(),
+        "allowed_start_utc": allowed_start.isoformat(),
+        "allowed_end_utc": allowed_end.isoformat(),
+        "prefix_gate_record": gate,
+        # 授权门只管跑前可判定的部分；跨窗口时间分离与 started_at 归属由派生器事后按 receipt 重核。
+        "gate_scope": "pre-spend bytes/order/membership/interval only; cross-window time separation "
+                      "and started_at anchoring are re-checked post-hoc by the deriver",
+    }
+
+
 def validate_execution_authorization(request_path, approval_path, expected_runtime, now=None,
                                      repo_root=None):
     """验证 ADR-0022 的 Hat A → Freeze → Hat B 证据链；任何缺口一律 fail closed。
@@ -592,6 +837,9 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
     deadline = min(vuntil, instant + datetime.timedelta(minutes=expected_runtime["max_runtime_minutes"]))
     if instant + datetime.timedelta(minutes=expected_runtime["max_runtime_minutes"]) > vuntil:
         raise AuthorizationError("now + max_runtime 超出 valid_until：剩余窗口不足以跑完")
+    # instrument qualification campaign（预注册 §7/§9）：无该块的 request 行为不变。
+    qualification_campaign = validate_qualification_campaign(
+        request, expected_runtime, repo_root, request_commit, approval_commit, now=now)
     return {
         "authorization_mode": approval["authorization_mode"],
         "authorization_status": "approved",
@@ -618,4 +866,7 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
         "provider_budget_cap": provider_cap,   # R3-D2：receipt 回显跑前 attest 的外部 provider cap
         "phase": expected_runtime["phase"],
         "analysis_eligibility": expected_runtime["analysis_eligibility"],
+        # 非 qualification 跑为 None；qualification 窗口带 campaign 归属 + 前缀门核验结果，
+        # 经 `out["meta"].update(auth_meta)` 进 artifact、再经 receipt 回显进审计链。
+        "qualification_campaign": qualification_campaign,
     }

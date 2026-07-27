@@ -1176,6 +1176,9 @@ def build_pipeline(prov, model, defense, pin_override=None):
     base_url, key_env, _ = PRESETS[prov]
     api_key = os.environ.get(key_env) if key_env else "EMPTY"
     client = openai.OpenAI(api_key=api_key or "EMPTY", base_url=base_url)
+    # ⚠ 这是 calendar 探针**自己的**溯源，逐 trial / 逐 turn（`one_trial` 每 trial `_telemetry.clear()`、
+    # 下面 `_create` 每 turn 记 served_model+fingerprint）。与 D8 的 `ithuriel.provenance`（每臂幂等首响应）
+    # 是**不同实现、不同粒度**，勿混（partner review 2026-07-27 B1）。
     served = set()  # (served_model, system_fingerprint) —— 供短时路由漂移诊断
     telemetry = []  # 逐 LLM turn 遥测（L0a/L0b/L0c 与 validity 判定的依据）
     pin = (pin_override or os.environ.get("CAL_PIN_PROVIDER", "")).strip()

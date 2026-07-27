@@ -1,5 +1,12 @@
 """provenance 捕获（档 2，ADR-0007）——薄适配器把真跑溯源归一化进 evidence schema。
 
+⚠ 作用域（partner review 2026-07-27 B1，防混淆）：本模块**只服务 D8 bare-vs-defended harness**
+（`scripts/run_bare_vs_defended.py` + `src/tests/test_provenance.py`），粒度是**每臂幂等首响应**
+（`record_response` 已填即跳过）。**calendar 探针不用本模块**——它的溯源是**逐 trial / 逐 turn 内联**在
+`scripts/run_calendar_probe.py` 的 `build_pipeline`（`_telemetry`/`_served`：每 turn 记
+served_model+fingerprint，`one_trial` 每 trial `clear()`）。两套实现、不同名字、不同粒度，**勿混**——
+曾据本模块误判 calendar 溯源为「每臂首响应」而埋掉逐 turn fingerprint 漂移。
+
 harness（借层）调这里（建层）把 requested/served model、temperature 意图 vs 线上、库版本、
 corpus/detector 版本钉进 `meta.provenance`；治滚动别名（`-latest`）不可复现坑（本项目被坑过：
 detector fixture 用 `mistral-small-latest`，真快照永久未知）。**纯函数、可离线测**（无网络/无 key）。

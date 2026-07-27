@@ -1,0 +1,19 @@
+{
+ "campaign_id": "qual-list-titles-001",
+ "campaign_status": "in_progress",
+ "covers": [
+  1
+ ],
+ "deriver_sha256": "3c832e9d2bed8bbbae08da3dbee3a4717bf5f0eb3fe3961993df2a365c060390",
+ "generated_at_utc": "2026-07-27T18:08:38.552341+00:00",
+ "kind": "prefix_gate_record/v1",
+ "next_window_authorizable": true,
+ "report_sha256": "350a324332efa55ba3ed4701030fd1547e0a7b1fff7a02512c731457e3fe27bc",
+ "rule_version": "qualification/v1",
+ "window_inputs": {
+  "1": {
+   "artifact_sha256": "c7c2c34c24f4315ffba6241458aef3324a7ffcbfa7398122380ee2b6950081f0",
+   "receipt_sha256": "c7fc9ef2fae7c5fa2b252c3bb56f9ff7f9d91151b6ca521e2089d1a7ef7b1de3"
+  }
+ }
+}

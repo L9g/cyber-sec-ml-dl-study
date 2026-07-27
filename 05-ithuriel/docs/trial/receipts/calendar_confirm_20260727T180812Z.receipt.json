@@ -1,0 +1,48 @@
+{
+ "artifact": "calendar_confirm_20260727T180812Z.json",
+ "artifact_sha256": "c7c2c34c24f4315ffba6241458aef3324a7ffcbfa7398122380ee2b6950081f0",
+ "execution_request_hash": "975d739a6ab522cef2670a752853af318022d03be839b35d25bf2099d900c8aa",
+ "request_commit": "bb403a260380b323d0e02dd876f01d2053ac1321",
+ "approval_commit": "76b09f7921b0b6f4fbcb288f9d5726e648399098",
+ "temporal_anchor": "local_git_only",
+ "authorization_status": "approved",
+ "analysis_eligibility": "preregistered",
+ "run_level_analysis_eligibility": null,
+ "started_at": "2026-07-27T18:02:51.117050+00:00",
+ "artifact_generated_at": "2026-07-27T18:08:12.295154+00:00",
+ "receipt_generated_at": "2026-07-27T18:08:12.306208+00:00",
+ "verdict": "c2_pass",
+ "approved_budget_cap_usd": 3.0,
+ "budget_enforcement": "hash-bound preflight plus max_trials; no live USD metering",
+ "provider_budget_cap": {
+  "provider": "OpenRouter",
+  "required": true,
+  "cap_usd": 3,
+  "max_allowed_cap_usd": 10,
+  "scope": "account",
+  "attested_by": "l9g",
+  "observed_at": "2026-07-27T18:53:00+01:00",
+  "evidence_ref": null
+ },
+ "deadline_utc": "2026-07-27T19:32:51.030431+00:00",
+ "run_status": "completed",
+ "termination_reason": null,
+ "qualification_campaign": {
+  "qualification_campaign_id": "qual-list-titles-001",
+  "window_index": 1,
+  "k_windows": 3,
+  "rule_version": "qualification/v1",
+  "deriver": {
+   "path": "src/ithuriel/probes/calendar/qualification.py",
+   "sha256": "3c832e9d2bed8bbbae08da3dbee3a4717bf5f0eb3fe3961993df2a365c060390"
+  },
+  "qualification_config_hash": "4f514f9ca2ede21ed8692bd9872da1d1e8904e83ef2c5e8d29d707f099e184fe",
+  "prereg_sha256": "5d4b4737fe952b2cf716528977136e1a11890b52d30f65a6d13c5ca9d6293f59",
+  "campaign_start_utc": "2026-07-27T00:00:00+00:00",
+  "campaign_deadline_utc": "2026-08-10T00:00:00+00:00",
+  "allowed_start_utc": "2026-07-27T00:00:00+00:00",
+  "allowed_end_utc": "2026-07-27T23:59:59+00:00",
+  "prefix_gate_record": null,
+  "gate_scope": "pre-spend bytes/order/membership/interval only; cross-window time separation and started_at anchoring are re-checked post-hoc by the deriver"
+ }
+}

@@ -1,15 +1,16 @@
 # 预注册 — list-titles 探针 C2 判定跨运行复现资格验证（instrument qualification）
 
-**状态：DRAFT v6（未冻结）。** v5 经第六轮 spot-check（1 P0 运行态缺口 + 2 非阻断）重写——补上非终局
-`in_progress` 前缀验证形态（使「首个 inconclusive 事件后停止」可执行、下一窗口授权前用同一套派生检查证明前缀
-合格）、冻结 closure record 最小字段、补 error-cap 边界 golden。**主体自第四轮起达冻结质量；前五项阻断 +
-本轮 P0 均已闭合。本轮无新增待选参数，唯一剩项 = 用户对本 v6 做定向复核**（reviewer 明示补 in_progress 后即达
-冻结线、不再全面概念审）。通过后随首窗口 Hat A 整体冻结，此前不得开跑任何计费窗口。
+**状态：FROZEN（设计契约 = §7 步骤①；内容 = v6 + 终审两处措辞澄清）。** 经六轮 adversarial review + 终审 GO；
+五态状态机、增量前缀门、projection/extractor、治理绑定、预算、时间、provenance、golden cases 已成可直接实现的
+闭合契约。本文件即后续实现的**权威行为契约**。
+**⚠ FROZEN 仅指设计契约冻结、不是计费授权**——首窗口 Hat A 是 §7 步骤⑥，须在派生器实现 + golden 全覆盖 +
+adversarial code review + deriver hash 冻结之后；此前不得开跑任何计费窗口。
 
 **探针身份**：`calendar-ipi-mavy/list-titles-v1`。**姊妹预注册**：`prereg-exfil-email-c2-list-titles.md`（已
-c2_pass）。**本轮不改探针任何 security/utility/治理机器**——三臂结构、security oracle、C2 判据代码、样本/预算/
-交错、ADR-0022 链全照搬姊妹预注册，只展开 qualification 独有的：分析单位、逐窗口判据（=重放 C2 判定）、跨窗口
-estimand、最薄派生器、声称边界。
+c2_pass）。**本轮不改探针的 security/utility/C2 测量机器**——三臂结构、security oracle、C2 判据代码、样本/交错全照搬
+姊妹预注册；**ADR-0022 基础链保留，但 execution authorization 扩展**：新增 qualification campaign 字段与
+prefix-gate 绑定核验（§7/§9）。本文件只展开 qualification 独有的：分析单位、逐窗口判据（=重放 C2 判定）、
+跨窗口 estimand、最薄派生器、声称边界。
 
 ## 0. 一句话定位 + 三条证据轴不得混成一个 readiness
 
@@ -111,9 +112,9 @@ discrimination instrument 通过重复运行资格」，不称「security + util
   输出 `campaign_status` + `next_window_authorizable`，作**下一窗口 Hat A 的前置门**；**不是**只在三窗口结束后
   才判。增量调与终局调**共用同一套检查**（避免两套实现的接缝 bug）。
 - **状态（对应 §7 输入形态）**：
-  - `in_progress`（**非终局**）：连续前缀 0..j（j<3）全通过 schema/治理/预算/campaign/时间/config/provenance/
-    measurement-validity 且全 `c2_pass`，余 slot pending → `next_window_authorizable=true`、**不产 qualification
-    verdict**。窗口 3 也全通过 → 转 `full_qualified`。
+  - `in_progress`（**非终局**）：前缀 window_index 恰为 1..j（j ∈ {0,1,2}，j=0 为空 artifact 集）全通过
+    schema/治理/预算/campaign/时间/config/provenance/measurement-validity 且全 `c2_pass`，余 slot pending →
+    `next_window_authorizable=true`、**不产 qualification verdict**。窗口 3 也全通过 → 转 `full_qualified`。
   - `qualified_with_limits`：3 窗口全 valid 且全 `c2_pass`（§7 `full_qualified`）。
   - `not_qualified_discrimination`：任一有效窗口 C2 判别失败（§7 `terminal_not_qualified`）。
   - `inconclusive`：出现 **config drift / 已开始窗口 measurement_invalid / provenance_invalid / governance-binding
@@ -136,8 +137,9 @@ discrimination instrument 通过重复运行资格」，不称「security + util
 **绝不先跑完窗口再写派生器。**
 
 **输入形态 = 五态状态机（四终局 + 一非终局，reviewer 第五/六轮）**——派生器（同一纯函数）接受且仅接受：
-- **in_progress（非终局）**：连续前缀 0..j 的 **j 份 artifact（j<3）**，全 present 窗口过全部检查且全 `c2_pass`，
-  余 slot pending。输出 `campaign_status="in_progress"` + `next_window_authorizable=true`，**不产 verdict**。
+- **in_progress（非终局）**：**j ∈ {0,1,2}，输入 artifact 的 window_index 恰好为 1..j（j=0 表示空 artifact
+  集）**；全 present 窗口过全部检查且全 `c2_pass`，余 slot pending。输出 `campaign_status="in_progress"` +
+  `next_window_authorizable=true`，**不产 verdict**。
 - **full_qualified**：恰好 1..3 的 **3 份 artifact**，全 valid `c2_pass` → `qualified_with_limits`。
 - **terminal_not_qualified**：连续前缀 1..j；windows 1..j-1 全 valid `c2_pass`、**window j = valid `C2-fail`**；
   其余 slot 标 `not_run_due_to_terminal_fail`。
@@ -279,14 +281,17 @@ ADR-0024——守「先跑最薄切片、据真实摩擦定 schema」。
     **w≥2 Hat A 机器绑定 committed `prefix_gate_record`**（把 reviewer「Hat A 以前缀验证为前提」从 procedure 落成
     machine 强制）。
   - 非阻断：closure record 冻结最小字段 + `closed_at_utc ≥ deadline`；error-cap 边界 golden（3 允许/4 invalid）。
+- **FROZEN（终审 GO，v6 + 两处措辞澄清，设计结论不变）**：① 纠正开头「治理机器全照搬」措辞——security/utility/
+  C2 测量机器不改，但 execution authorization **扩展**（新增 qualification campaign + prefix-gate 绑定）；
+  ② in_progress 索引精确化（j∈{0,1,2}、window_index 恰为 1..j、j=0 为空集）。标记为后续实现的权威行为契约。
 
 ## 待办
 
-1. ⏳ 用户对本 v6 做**定向复核**（reviewer 明示补 in_progress 后即达冻结线）。
+1. ✅ 六轮 adversarial review + 终审 **GO**；设计契约已 **FROZEN**（§7 步骤①）。
 2. ⏳ 通过 → FROZEN → 实现纯函数派生器（五态状态机 + 增量前缀门 + projection/extractor + 治理绑定/预算谓词 +
    campaign 归属 + 时间检查 + provenance），golden 全状态覆盖、进常规 pytest、adversarial review。
 3. ⏳ deriver 版本/哈希 + rule version 绑进 campaign → 才起首窗口 Hat A（预声明 `campaign_start_utc` 与逐窗口区间）。
 4. ⏳ 逐窗口跑（各走完整 Hat A→Hat B→run→receipt，绑 campaign manifest + prefix_gate_record）→ 派生 report +
    committed receipt → 据摩擦补 ADR-0024。
 
-**本文件为 DRAFT v6，仅供用户定向复核；未冻结、未授权任何计费运行。**
+**本文件 FROZEN（设计契约，§7 步骤①）；仍未授权任何计费运行——首窗口 Hat A 见 §7 步骤⑥。**

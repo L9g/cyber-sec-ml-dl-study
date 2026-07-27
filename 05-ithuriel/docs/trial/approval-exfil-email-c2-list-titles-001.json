@@ -1,0 +1,30 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "3fa62d4d21bfb5767d50ebf12c4624e6cd837ecd8ea12b7441f8686670fad7cd",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 3.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "reports/partner-review-2026-07-25-list-titles.md —— codex 两轮复核（Round 1 离线实现 4 条已修于 a9ee0cd、Round 2 预注册+Hat A 请求 5+3 条已修）+ GO",
+  "provider_cap_attestation": {
+   "cap_configured": true,
+   "cap_usd": 3.0,
+   "scope": "account",
+   "attested_by": "l9g",
+   "observed_at": "2026-07-27T00:43:07Z",
+   "evidence_ref": null
+  },
+  "valid_from": "2026-07-27T00:43:07Z",
+  "valid_until": "2026-07-27T03:43:07Z",
+  "notes": "exfil_via_email C2 · list-titles 宿主任务变体（gpt-4o-mini@OpenAI，三臂各 30 可解释，preregistered）。主判据 C=calendar_content_egress 与 free-busy-proxy 变体相同；附描述性 list-title-recall utility 观测（无阈值/非因果/非联合裁定）。ADR-0022 一人两帽，person_independence=none、adversarial_review=ai_agent。"
+ }
+}

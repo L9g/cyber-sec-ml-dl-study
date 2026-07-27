@@ -64,7 +64,10 @@ def _jsonable(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_jsonable(v) for v in obj]
     if isinstance(obj, (set, frozenset)):
-        return sorted(_jsonable(v) for v in obj if v is not None)
+        # None 不可与 str 同序排序，但**不能因此丢掉它**——「某 turn 没报 fingerprint」正是收窄到
+        # pinned-route 观测重复性的依据（自我复核发现 ③）。故非空值排序在前、null 明确保留在末。
+        return sorted((_jsonable(v) for v in obj if v is not None), key=str) \
+            + ([None] if None in obj else [])
     return obj
 
 
@@ -161,6 +164,43 @@ def load_window(index: int, artifact_path: str, receipt_path: str, request_path:
     return window, hashes
 
 
+def _cross_check_prefix_gates(windows: list, inputs: dict, manifest: dict) -> None:
+    """前缀门绑的**必须就是眼下这几份** artifact/receipt（自我复核发现 ②）。
+
+    授权门在 Hat A 时核的是「门存在、字节没被改、覆盖 1..w-1」，但那时前几个窗口的 artifact 不入 git、
+    它验不了门里的输入哈希指向谁。派生时这些字节全在手上，故必须在这一层闭合：否则**重跑窗口 1 后
+    拿旧门配新 artifact** 仍能派生出资格结论，「跑下一窗口前先验前缀」就被架空了。
+    门的 campaign/规则/派生器身份也在此复核（读到文件的是本层）。
+    """
+    for window in windows:
+        index = window["index"]
+        gate = window.get("prefix_gate_record")
+        if index < 2 or gate is None:
+            continue
+        if gate.get("campaign_id") != manifest.get("campaign_id"):
+            raise QualificationLoadError(
+                f"窗口 {index} 的前缀门属于另一个 campaign（{gate.get('campaign_id')!r}）")
+        if gate.get("rule_version") != q.RULE_VERSION:
+            raise QualificationLoadError(
+                f"窗口 {index} 的前缀门 rule_version={gate.get('rule_version')!r} 与派生器不符")
+        if gate.get("deriver_sha256") != deriver_sha256():
+            raise QualificationLoadError(
+                f"窗口 {index} 的前缀门由另一版派生器产出 —— 拒绝据它推进 campaign")
+        expected = list(range(1, index))
+        if list(gate.get("covers") or []) != expected:
+            raise QualificationLoadError(
+                f"窗口 {index} 的前缀门 covers={gate.get('covers')!r} != {expected}")
+        gate_inputs = gate.get("window_inputs") or {}
+        for i in expected:
+            got, want = gate_inputs.get(str(i)) or {}, inputs.get(str(i)) or {}
+            for key in ("artifact_sha256", "receipt_sha256"):
+                if got.get(key) != want.get(key):
+                    raise QualificationLoadError(
+                        f"窗口 {index} 的前缀门绑的窗口 {i} {key} 是 {str(got.get(key))[:8]}，"
+                        f"眼下这份是 {str(want.get(key))[:8]} —— 前缀门覆盖的不是这批运行"
+                        "（如窗口被重跑），拒绝派生")
+
+
 def derive_campaign(manifest_path: str, window_specs, closure_path: Optional[str] = None,
                     repo_root: Optional[str] = None) -> dict:
     """读全部输入 → 调派生器 → 组装 report（未写盘）。window_specs = [(index, art, rec, req), ...]。"""
@@ -172,6 +212,7 @@ def derive_campaign(manifest_path: str, window_specs, closure_path: Optional[str
         windows.append(window)
         inputs[str(index)] = {**hashes, "artifact_path": art_p, "receipt_path": rec_p,
                               "request_path": req_p}
+    _cross_check_prefix_gates(windows, inputs, manifest)
     closure = _load_json(closure_path, "campaign closure record") if closure_path else None
     try:
         result = q.derive_qualification(manifest, windows, closure_record=closure)
@@ -179,7 +220,7 @@ def derive_campaign(manifest_path: str, window_specs, closure_path: Optional[str
         # 畸形输入形态（中间缺口 / terminal 后运行 / 非终止窗口非 c2_pass / deadline 缺 closure）
         # 一律 fail-closed：不产 verdict，比产一个说不清的 verdict 安全。
         raise QualificationLoadError(f"派生器拒绝该输入形态（fail-closed）：{exc}") from exc
-    return {
+    report = {
         "kind": REPORT_KIND,
         "campaign_id": manifest.get("campaign_id"),
         "rule_version": q.RULE_VERSION,
@@ -192,6 +233,28 @@ def derive_campaign(manifest_path: str, window_specs, closure_path: Optional[str
         "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "result": _jsonable(result),
     }
+    report["core_sha256"] = core_sha256(report)
+    return report
+
+
+def core_sha256(report: dict) -> str:
+    """**与时刻、本机路径无关**的派生身份（自我复核发现 ④）。
+
+    `report_sha256` 是整份文件的哈希，含 `generated_at_utc` 与本机绝对路径 —— 审计员用同样的输入
+    重跑派生器，文件哈希必然不同，「重算比对」就做不了。故另算一个只含 rule/deriver 身份 + 各输入
+    哈希 + 判定结果的核心哈希：**同输入同派生器 ⇒ 同 core_sha256**。
+    """
+    core = {
+        "kind": report["kind"], "campaign_id": report["campaign_id"],
+        "rule_version": report["rule_version"], "deriver_sha256": report["deriver_sha256"],
+        "manifest_sha256": report["manifest_sha256"],
+        "closure_record_sha256": report["closure_record_sha256"],
+        "window_inputs": {k: {kk: vv for kk, vv in v.items() if not kk.endswith("_path")}
+                          for k, v in report["window_inputs"].items()},
+        "result": report["result"],
+    }
+    return hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def build_prefix_gate_record(report: dict) -> dict:
@@ -238,6 +301,8 @@ def build_anchor(report: dict, report_path: str, report_sha256: str) -> dict:
         "window_statuses": {str(w.get("index")): w.get("status") for w in result.get("windows") or []},
         "report_path": report_path,
         "report_sha256": report_sha256,
+        # 审计员可用同样输入重跑派生器复算这一项（report_sha256 含时刻/本机路径，复算必不同）
+        "core_sha256": report["core_sha256"],
         "manifest_sha256": report["manifest_sha256"],
         "closure_record_sha256": report["closure_record_sha256"],
         "window_inputs": {k: {kk: vv for kk, vv in v.items() if kk.endswith("sha256")

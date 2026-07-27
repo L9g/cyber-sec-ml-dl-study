@@ -27,7 +27,7 @@ def _dump(path, obj):
 
 
 def write_window(root, index, *, gate_rel=None, camp_over=None, art_sha_override=None,
-                 request_hash_override=None, deriver_sha_override=None, **win_kw):
+                 request_hash_override=None, deriver_sha_override=None, suffix="", **win_kw):
     """把一个 golden 窗口落成三份真文件（哈希彼此闭合）。返回 (index, art_p, rec_p, req_p)。"""
     w = make_window(index, camp_over=camp_over, **win_kw)
     art, rec, req = w["artifact"], w["receipt"], w["request"]
@@ -45,10 +45,10 @@ def write_window(root, index, *, gate_rel=None, camp_over=None, art_sha_override
                        approval_commit="c2")
     rec.update(execution_request_hash=request_hash, request_commit="c1", approval_commit="c2")
 
-    art_p = _dump(os.path.join(root, f"results/artifact-w{index}.json"), art)
+    art_p = _dump(os.path.join(root, f"results/artifact-w{index}{suffix}.json"), art)
     rec["artifact_sha256"] = art_sha_override or DQ._file_sha256(art_p)
-    rec_p = _dump(os.path.join(root, f"docs/trial/receipts/w{index}.receipt.json"), rec)
-    req_p = _dump(os.path.join(root, f"docs/trial/execution-request-w{index}.json"),
+    rec_p = _dump(os.path.join(root, f"docs/trial/receipts/w{index}{suffix}.receipt.json"), rec)
+    req_p = _dump(os.path.join(root, f"docs/trial/execution-request-w{index}{suffix}.json"),
                   {"request": req, "execution_request_hash": request_hash})
     return index, art_p, rec_p, req_p
 
@@ -218,3 +218,67 @@ def test_deadline_inconclusive_from_closure_record(tmp_path):
     assert report["result"]["campaign_status"] == "deadline_inconclusive"
     assert report["closure_record_sha256"] == DQ._file_sha256(closure)
     assert not os.path.exists(os.path.join(root, GATE_REL))
+
+
+# ---------------- 自我对抗性复核补的门（发现 ②③；发现 ① 在 test_governance_authorization.py）----------------
+def test_gate_bound_to_rerun_window_is_rejected(tmp_path):
+    # ⭐ 发现 ②：窗口 1 被**重跑**（新 artifact 字节）后拿旧前缀门配新 artifact —— 授权门在 Hat A 时
+    # 验不了这个（artifact 不入 git），必须在派生的字节层闭合，否则「先验前缀」被架空。
+    root = str(tmp_path)
+    w1 = write_window(root, 1)
+    assert _run(root, [w1]) == 0                        # 门绑的是这一版 artifact
+    w2 = write_window(root, 2, gate_rel=GATE_REL)
+    w1_rerun = write_window(root, 1, pos=27, suffix="-rerun")   # 重跑：仍 c2_pass，但字节变了
+    assert _run(root, [w1_rerun, w2]) == 4
+    assert _run(root, [w1, w2]) == 0                    # 用门实际覆盖的那批仍然通过
+
+
+def test_gate_from_other_campaign_rejected(tmp_path):
+    root = str(tmp_path)
+    w1 = write_window(root, 1)
+    assert _run(root, [w1]) == 0
+    w2 = write_window(root, 2, gate_rel=GATE_REL)
+    gate = _read(root, GATE_REL)
+    gate["campaign_id"] = "other-campaign"
+    _dump(os.path.join(root, GATE_REL), gate)
+    # 门被改 → 先撞字节门；把 request 的声明也改成新字节，才测到 campaign 归属这一层
+    req_p = os.path.join(root, "docs/trial/execution-request-w2.json")
+    doc = _read(root, "docs/trial/execution-request-w2.json")
+    doc["request"]["qualification_campaign"]["prefix_gate_record"]["sha256"] = \
+        DQ._file_sha256(os.path.join(root, GATE_REL))
+    doc["execution_request_hash"] = _sha(doc["request"])
+    _dump(req_p, doc)
+    rec = _read(root, "docs/trial/receipts/w2.receipt.json")
+    rec["execution_request_hash"] = doc["execution_request_hash"]
+    _dump(os.path.join(root, "docs/trial/receipts/w2.receipt.json"), rec)
+    art = _read(root, "results/artifact-w2.json")
+    art["meta"]["execution_request_hash"] = doc["execution_request_hash"]
+    art_p = _dump(os.path.join(root, "results/artifact-w2.json"), art)
+    rec["artifact_sha256"] = DQ._file_sha256(art_p)
+    rec_p = _dump(os.path.join(root, "docs/trial/receipts/w2.receipt.json"), rec)
+    assert _run(root, [w1, (2, art_p, rec_p, req_p)]) == 4
+
+
+def test_missing_fingerprint_is_preserved_not_silently_dropped(tmp_path):
+    # ⭐ 发现 ③：「某 turn 没报 fingerprint」正是收窄到 pinned-route 观测重复性的依据，
+    # 序列化时不得静默丢掉 None。
+    root = str(tmp_path)
+    assert _run(root, [write_window(root, 1, fps=("fp_a", None))]) == 0
+    prov = _read(root, "reports/qualification_report.json")["result"]["windows"][0]["provenance"]
+    assert prov["fingerprints"] == ["fp_a", None]
+    assert prov["fingerprint_scope"] == "pinned_route_repeatability"
+
+
+def test_core_hash_is_reproducible_while_file_hash_is_not(tmp_path):
+    # ⭐ 发现 ④：report_sha256 含 generated_at_utc 与本机路径 → 审计员重算必不同；core_sha256
+    # 只含 rule/deriver 身份 + 输入哈希 + 判定结果，同输入同派生器必然相同（可「重算比对」）。
+    root = str(tmp_path)
+    w1 = write_window(root, 1)
+    assert _run(root, [w1]) == 0
+    first = _read(root, "docs/trial/qualification/anchor.json")
+    assert _run(root, [w1]) == 0
+    second = _read(root, "docs/trial/qualification/anchor.json")
+    assert first["core_sha256"] == second["core_sha256"]
+    assert first["report_sha256"] != second["report_sha256"]      # 时刻不同 → 文件哈希不同
+    assert second["core_sha256"] == DQ.core_sha256(
+        _read(root, "reports/qualification_report.json"))

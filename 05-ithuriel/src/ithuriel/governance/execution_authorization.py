@@ -534,6 +534,10 @@ _QUAL_REQUIRED_KEYS = ("qualification_campaign_id", "prereg_sha256", "window_ind
 _PREFIX_GATE_REQUIRED_KEYS = ("campaign_id", "rule_version", "deriver_sha256", "campaign_status",
                               "next_window_authorizable", "covers", "window_inputs")
 _PREFIX_GATE_INPUT_HASHES = ("artifact_sha256", "receipt_sha256")
+# 引用本预注册跑的窗口**必须**带 campaign 块。否则漏写 campaign 只会在**跑完之后**被派生器与 loader
+# 拒（campaign 归属 fail-closed）——钱已经花了、窗口作废。把它提到跑前，是自我复核找到的唯一
+# 「pre-spend 保护缺口」（详见 docs/trial/review-qualification-implementation.md 发现 ①）。
+QUALIFICATION_PREREG_PATH = "docs/trial/prereg-instrument-qualification-list-titles.md"
 
 
 def _nonempty_str(v):
@@ -667,6 +671,10 @@ def validate_qualification_campaign(request, expected_runtime, repo_root, reques
     """
     camp = request.get("qualification_campaign")
     if camp is None:
+        if request.get("prereg_ref") == QUALIFICATION_PREREG_PATH:
+            raise AuthorizationError(
+                f"prereg_ref 指向 qualification 预注册却无 qualification_campaign 块 —— 拒开窗口"
+                "（缺归属的窗口跑完也不能用，不能等派生时才发现）")
         return None
     if not isinstance(camp, dict):
         raise AuthorizationError("qualification_campaign 必须是对象（fail-closed）")

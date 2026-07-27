@@ -330,7 +330,9 @@ def test_provider_cap_fail_closed_on_missing_required_key():
 QUAL_NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.timezone.utc)
 CAMPAIGN_ID = "qual-list-titles-001"
 DERIVER_PATH = "src/ithuriel/probes/calendar/qualification.py"
-PREREG_PATH = "docs/trial/prereg-instrument-qualification-list-titles.md"
+# 刻意**不用** EA.QUALIFICATION_PREREG_PATH：那条路径会触发「qualification prereg 必须带 campaign 块」
+# 的新门，而多数用例要测的是别的东西（专测该门的用例自己换成真路径）。
+PREREG_PATH = "docs/trial/prereg-dummy-for-campaign-tests.md"
 GATE_PATH = "docs/trial/qualification/prefix-gate-001-w1.json"
 REQ_PATH = "docs/trial/execution-request-qual-001-w2.json"
 APR_PATH = "docs/trial/approval-qual-001-w2.json"
@@ -633,3 +635,15 @@ def test_missing_campaign_field_fails_closed(tmp_path):
 def test_rule_version_must_match_frozen_deriver(tmp_path):
     with pytest.raises(AuthorizationError, match="rule_version"):
         _validate(tmp_path, campaign_over={"rule_version": "qualification/v0"})
+
+
+def test_qualification_prereg_without_campaign_block_is_rejected(tmp_path):
+    # ⭐ 自我复核发现 ①（pre-spend 缺口）：引用 qualification 预注册却漏写 campaign 块，此前只会在
+    # **跑完之后**被派生器拒（钱已花、窗口作废）。现在跑前就拒。
+    repo, req, apr, rt = _build_qual_repo(tmp_path, window_index=1, drop_campaign=True)
+    doc = json.loads(open(req, encoding="utf-8").read())
+    doc["request"]["prereg_ref"] = EA.QUALIFICATION_PREREG_PATH
+    doc["request"]["materials"].append({"path": EA.QUALIFICATION_PREREG_PATH, "sha256": "x" * 64})
+    doc["execution_request_hash"] = EA._sha(doc["request"])
+    with pytest.raises(AuthorizationError, match="无 qualification_campaign 块"):
+        EA.validate_qualification_campaign(doc["request"], rt, repo, "c1", "c2", now=QUAL_NOW)

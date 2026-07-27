@@ -1,0 +1,15 @@
+{
+ "artifact": "calendar_confirm_20260724T001709Z.json",
+ "artifact_sha256": "bb167043d3c38f05f0fcecf47c834bd26d3db563207eb4134025672584b1b06b",
+ "execution_request_hash": "0f67f794981765bce258dc09e0129a9b8f6c3787fe1e993eddf85af3bd954e92",
+ "request_commit": "d7459daceced48e642256bcf4f26b46add61fdf4",
+ "approval_commit": "21ae9c5a0d90af6cf46adf6c65ab46c96c298dc8",
+ "temporal_anchor": "local_git_only",
+ "authorization_status": "approved",
+ "analysis_eligibility": "excluded",
+ "run_level_analysis_eligibility": null,
+ "started_at": "2026-07-24T00:16:30.677021+00:00",
+ "artifact_generated_at": "2026-07-24T00:17:09.605115+00:00",
+ "receipt_generated_at": "2026-07-24T00:17:09.608074+00:00",
+ "verdict": "excluded_pilot"
+}

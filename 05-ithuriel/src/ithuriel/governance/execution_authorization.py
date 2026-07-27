@@ -12,12 +12,159 @@ Hat A 冻结的不可变 execution request、Hat B 后续独立 commit 的 appro
 （证据完整性与执行请求哈希共用的内容寻址原语）。
 """
 import os
+import sys
 import json
+import math
+import shutil
+import numbers
 import subprocess
 import datetime
 import hashlib
+from importlib import metadata
 
 from ithuriel.probes.calendar.oracle import _sha
+
+
+def _env_identity():
+    """运行依赖身份，写进 **hash-bound runtime**（partner review 2026-07-24 D1）。
+
+    7 项受管辖材料只冻结项目内代码/文档；借来的执行底座（AgentDojo）、模型 SDK（openai）、
+    解释器版本在哈希门外，改装 `.venv` 后 fixture/tool schema/state 语义可变而授权仍通过。
+    把这三个版本纳入 runtime 后，运行时 `execution_runtime()` 会重读已装版本——一旦漂移，
+    runtime 与冻结 request 不再逐字节相等 → `authorization_status=lapsed`（复用既有 runtime 相等门，
+    无需额外机制）。配合把 `pyproject.toml`/`uv.lock` 列入受管辖材料冻结 pin 字节，双向绑定。
+    """
+    def _v(pkg):
+        try:
+            return metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            return None
+    return {
+        "python": "%d.%d.%d" % sys.version_info[:3],
+        "agentdojo": _v("agentdojo"),
+        "openai": _v("openai"),
+    }
+
+
+def _lock_versions(repo_root, packages=("agentdojo", "openai")):
+    """关键 direct-pin 的 **defense-in-depth** 抽取；权威的完整依赖 closure 校验委托 uv
+    （`_verify_lock_sync`），本函数**不复制 uv 的 marker/platform resolver**（partner review R3-D1）。
+
+    用 `tomllib` 解析 uv.lock、对**同名 package 多块** fail-closed（多 version/source/marker 分叉时
+    浅抽取会静默后写覆盖，故拒绝而非猜）。
+    """
+    import tomllib
+    with open(os.path.join(repo_root, "uv.lock"), "rb") as f:
+        data = tomllib.load(f)
+    want = set(packages)
+    out = {}
+    for pkg in data.get("package", []):
+        name = pkg.get("name")
+        if name in want:
+            if name in out:
+                raise AuthorizationError(
+                    f"uv.lock 中 {name} 有多个 package 块（R3-D1 fail-closed：关键 pin 须唯一，"
+                    "多块须交 uv 的 resolver 判定、不在此浅抽取）")
+            out[name] = pkg.get("version")
+    return out
+
+
+_EXPECTED_PINS = ("agentdojo", "openai")
+
+
+def _verify_pinned_versions(repo_root):
+    """核 hash-bound 的关键 pin（agentdojo/openai）installed == uv.lock。
+
+    **缺 pin 即 fail-closed**（partner review 2026-07-24 R2-D1）：mismatch 只遍历 `locked` 会让「解析器
+    漏块 / lock 缺该包」静默通过，故先强制 `_EXPECTED_PINS` 全部解析到、再逐个比对。
+    """
+    locked = _lock_versions(repo_root, _EXPECTED_PINS)
+    missing = [p for p in _EXPECTED_PINS if p not in locked]
+    if missing:
+        raise AuthorizationError(
+            f"uv.lock 未解析到必需 pin {missing}（D1 fail-closed：解析器漏块或 lock 缺该包）")
+    installed = _env_identity()
+    mismatch = {p: (locked[p], installed.get(p)) for p in _EXPECTED_PINS
+                if locked[p] != installed.get(p)}
+    if mismatch:
+        raise AuthorizationError(
+            "已装版本与 uv.lock 不一致（D1）："
+            + "; ".join(f"{p}: lock={lk} installed={ins}" for p, (lk, ins) in mismatch.items()))
+    return {"locked": locked, "installed": {p: installed.get(p) for p in _EXPECTED_PINS}}
+
+
+def _verify_running_interpreter(repo_root):
+    """绑定 uv 所核环境与实际运行解释器（R3-D1 + R4-D1）。
+
+    ① 断言 `realpath(sys.prefix)==realpath(repo/.venv)`：否则 uv 核的是另一个环境，可被「同顶层版本、
+    transitive 已漂移的解释器」绕过。② **拒非空 PYTHONPATH/PYTHONHOME**（R4-D1）：它们能 shadow 已装包、
+    破坏 import provenance，而 sys.prefix 不变。runner 自身 `sys.path.insert(0, ../src)`，计费跑不需要
+    PYTHONPATH，故可安全拒绝。**边界**：只绑定 prefix + 已装 distribution，不证明 import 字节级 provenance
+    （self-authorized T0–T2 可接受）。
+    """
+    for var in ("PYTHONPATH", "PYTHONHOME"):
+        if os.environ.get(var):
+            raise AuthorizationError(
+                f"{var} 非空（R4-D1 fail-closed：可 shadow 已装包、坏 import provenance；sys.prefix 不变）；"
+                "计费跑须清空（runner 自己 insert ../src，不需要它）")
+    venv = os.path.realpath(os.path.join(repo_root, ".venv"))
+    prefix = os.path.realpath(sys.prefix)
+    if prefix != venv:
+        raise AuthorizationError(
+            f"运行解释器不是项目 .venv（R3-D1 fail-closed）：sys.prefix={prefix} 期望={venv}；"
+            "计费跑须用 .venv/bin/python，使 uv 依赖校验与实际解释器同一")
+    return {"sys_prefix": prefix, "project_venv": venv}
+
+
+def _verify_lock_sync(repo_root):
+    """借 uv 自身的 frozen-lock 校验捕获 **transitive 依赖漂移**（pydantic/httpx/jiter 等——只比对
+    agentdojo/openai 两个 pin 看不到它们，但它们能改 tool schema / 序列化 / transport；R2-D1）。
+
+    读-only：`uv --no-cache --no-config --project <root> sync --check --frozen --offline --inexact`
+    （in-sync→exit 0；不改环境、不联网、不删多余包）。缺 uv 即 fail-closed。
+
+    **R4-D1 + R5-D1：uv 的目标 env/project/校验行为会被继承的 `UV_*` 环境变量重定向或削弱**——不只
+    `UV_PROJECT_ENVIRONMENT`（重定向环境），还有 `UV_ONLY_INSTALL_LOCAL=1`（让 uv 只校验 0 个远端依赖、
+    近乎空过、已复现绕过）等。故给子进程**清掉全部继承 `UV_*`（allowlist：只留我们显式设的）**，再强制
+    `UV_PROJECT_ENVIRONMENT`=已验证的 repo/.venv，并用绝对 `--project` + `--no-config`，使 uv 所核环境与
+    校验行为都机器可验证地钉死（须先经 `_verify_running_interpreter`）。**逐个 blocklist 会漏新变量，故用
+    allowlist。**
+    """
+    uv = shutil.which("uv")
+    if not uv:
+        raise AuthorizationError("uv 不在 PATH（D1 fail-closed：无法校验完整依赖同步）")
+    venv = os.path.realpath(os.path.join(repo_root, ".venv"))
+    # allowlist：清掉**全部**继承 UV_*（防 UV_ONLY_INSTALL_LOCAL 等削弱校验的变量），只显式设 target env
+    env = {k: v for k, v in os.environ.items() if not k.startswith("UV_")}
+    env["UV_PROJECT_ENVIRONMENT"] = venv   # 唯一显式保留：钉死 uv 所核环境
+    cmd = [uv, "--no-cache", "--no-config", "--project", os.path.abspath(repo_root),
+           "sync", "--check", "--frozen", "--offline", "--inexact"]
+    proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        raise AuthorizationError(
+            "uv 依赖同步校验失败（D1，transitive 漂移或环境不同步）："
+            + (proc.stderr or proc.stdout or "").strip()[:400])
+    return {"method": "uv --no-cache --no-config --project <root> sync --check --frozen --offline --inexact",
+            "pinned_project_environment": venv, "returncode": 0}
+
+
+def verify_env_matches_lock(repo_root=None):
+    """D1 preflight（partner review 2026-07-24，R2-D1 + R3-D1 加固）：三层，任一失败 fail-closed。
+
+    ⓪ **运行解释器 == 项目 .venv**（R3-D1：绑定 uv 所核环境与实际 runner，否则可绕过）；
+    ① 关键 direct-pin（agentdojo/openai）installed == uv.lock，**缺 pin 即拒**（defense-in-depth）；
+    ② 借 uv 校验**完整必需依赖 closure 同步**（含 transitive），权威完整校验在此。
+
+    与 runtime 里的 `environment` 相等门配合：相等门捕获 Hat A **之后**的关键版本漂移，本 preflight
+    捕获「冻结当刻 installed ≠ 冻结 lock」的初始不一致 + transitive 漂移。**边界（务必守）**：这是
+    **版本级**同步校验，**不**证明同版本包的文件字节未被就地篡改；在 self-authorized T0–T2 可接受，
+    但不得据此声称「任意改装 `.venv` 都会 lapsed」。
+    """
+    repo_root = repo_root or _PROJECT_ROOT
+    return {"interpreter": _verify_running_interpreter(repo_root),
+            "pinned": _verify_pinned_versions(repo_root),
+            "lock_sync": _verify_lock_sync(repo_root),
+            "boundary": "version-level sync only; not byte-level package-file integrity"}
 from ithuriel.probes.calendar.payload import MEASUREMENT_SCHEMA_VERSION, CELLS
 
 # 本模块从 scripts/run_calendar_probe.py 搬入 src/ithuriel/governance/ 后，默认 repo_root 须指向
@@ -153,6 +300,15 @@ def write_run_receipt(artifact_path, meta, primary, started_at, out_dir="docs/tr
         "artifact_generated_at": meta.get("generated_at"),
         "receipt_generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "verdict": primary.get("verdict"),
+        # R4-C1：兑现「四层回显」——receipt 回显授权门比对通过的外部 provider cap attestation
+        # （跑前事实；receipt 是跑后回显、不承担跑前授权，但审计链承诺其可见）。
+        "approved_budget_cap_usd": meta.get("approved_budget_cap_usd"),
+        "budget_enforcement": meta.get("budget_enforcement"),
+        "provider_budget_cap": meta.get("provider_budget_cap"),
+        # R5：直接回显 deadline / run 状态（此前只经 artifact SHA 间接锚定；缺则 None）。
+        "deadline_utc": meta.get("deadline_utc"),
+        "run_status": meta.get("run_status"),
+        "termination_reason": meta.get("termination_reason"),
     }
     p = os.path.join(out_dir, os.path.basename(artifact_path).replace(".json", ".receipt.json"))
     with open(p, "w", encoding="utf-8") as f:
@@ -223,7 +379,9 @@ def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_c
         raise AuthorizationError("CAL_PHASE 必须是 pilot 或 main")
     if not isinstance(budget_cap_usd, (int, float)) or isinstance(budget_cap_usd, bool) \
             or budget_cap_usd <= 0:
-        raise AuthorizationError("CAL_BUDGET_CAP_USD 必须是正数硬上限")
+        # R2-D2：这是**批准的计划额度**、非代码级硬成本熔断（云端硬 cap 需实时读余额，做不到）；
+        # 硬熔断由 provider 侧 cap + max_trials 承担。
+        raise AuthorizationError("CAL_BUDGET_CAP_USD 必须是正数批准额度（计划额度，非代码级硬熔断）")
     if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
         raise AuthorizationError("CAL_N_TRIALS 必须是正整数")
     if not isinstance(max_runtime_minutes, (int, float)) or isinstance(max_runtime_minutes, bool) \
@@ -239,6 +397,7 @@ def execution_runtime(mode, phase, provider, model, pinned_provider, n, budget_c
         "runner": "scripts/run_calendar_probe.py",
         "runner_sha256": runner_sha256,
         "materials": [{"path": m, "sha256": _file_sha(repo_root, m)} for m in sorted(mats)],
+        "environment": _env_identity(),   # D1：运行依赖身份进 hash-bound runtime
         "max_runtime_minutes": float(max_runtime_minutes),
         "measurement_schema_version": MEASUREMENT_SCHEMA_VERSION,
         "experiment_mode": mode,
@@ -271,6 +430,73 @@ def _load_json(path, label):
             return json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise AuthorizationError(f"无法读取{label}：{exc}") from exc
+
+
+def _finite_positive(x):
+    """有限正实数（拒 bool/NaN/inf/非数）——`NaN <= 0` 与 `NaN > ceiling` 都为 False，会绕过朴素比较，
+    故必须 `math.isfinite` 显式拒（R4-D2）。"""
+    return isinstance(x, numbers.Real) and not isinstance(x, bool) and math.isfinite(x) and x > 0
+
+
+def _enforce_provider_budget_cap(request, approval, now=None):
+    """R3-D2 + R4-D2：外部 provider consumption cap 的**可执行契约**，非自由 attestation 字段。
+
+    云端模型没有代码级硬成本熔断（需实时读代理商余额，做不到）；硬熔断由 provider 侧 consumption cap
+    承担。程序不读 provider 后台，故外部事实仍由操作员 attestation 承担，**但其 required/范围/scope/
+    有限数/时间/provider 一致性由授权门 fail-closed 强制**——只在 JSON 里加自由字段不够（R3-D2）。
+    request 冻结规则（`external_budget_control`），approval 填跑前 attestation，此处比对。
+    未冻结规则的旧 request（无 `external_budget_control` 或 required 非真）不强制，向后兼容。
+    """
+    rule = request.get("external_budget_control")
+    if not isinstance(rule, dict) or not rule.get("required"):
+        return None
+    # R4-D2：required 规则自身的 ceiling 必须是合法有限正数，否则规则本身不可执行 → 拒。
+    max_allowed = rule.get("max_allowed_cap_usd")
+    if not _finite_positive(max_allowed):
+        raise AuthorizationError(
+            f"external_budget_control.max_allowed_cap_usd 非合法有限正数（R4-D2 fail-closed）：{max_allowed!r}")
+    field = rule.get("approval_attestation_field") or "provider_cap_attestation"
+    att = approval.get(field)
+    if not isinstance(att, dict):
+        raise AuthorizationError(
+            f"request 要求 provider cap attestation，但 approval 缺 `{field}`（R3-D2 fail-closed）")
+    if att.get("cap_configured") is not True:
+        raise AuthorizationError(f"approval.{field}.cap_configured 必须为 true（R3-D2）")
+    cap = att.get("cap_usd")
+    if not _finite_positive(cap):
+        raise AuthorizationError(
+            f"approval.{field}.cap_usd 必须是有限正数（R4-D2：拒 NaN/inf/非数）：{cap!r}")
+    if cap > max_allowed:
+        raise AuthorizationError(
+            f"provider cap ${cap} 超过 request 允许上限 ${max_allowed}（R3-D2 fail-closed：blast radius）")
+    # R4-D2：rule provider 与 approval provider 规范化一致（cap 规则须适用于实际 provider）。
+    rule_prov = str(rule.get("provider", "")).strip().lower()
+    apr_prov = str(approval.get("approved_provider", "")).strip().lower()
+    if rule_prov and apr_prov and rule_prov != apr_prov:
+        raise AuthorizationError(
+            f"cap rule provider={rule.get('provider')!r} 与 approval provider={approval.get('approved_provider')!r} "
+            "不符（R4-D2：cap 规则须适用于实际 provider）")
+    req_scope = rule.get("cap_scope")
+    if req_scope and att.get("scope") != req_scope:
+        raise AuthorizationError(
+            f"approval.{field}.scope={att.get('scope')!r} 与 request 要求 {req_scope!r} 不符（R3-D2）")
+    for k in (rule.get("required_attestation_keys") or ()):
+        if att.get(k) in (None, "", []):
+            raise AuthorizationError(f"approval.{field} 缺必填 attestation 字段 `{k}`（R3-D2）")
+    # R4-D2：observed_at 须严格可解析为带时区时间、且不在未来（不能拿跑后/伪造时间冒充跑前观察）。
+    inst = (now or datetime.datetime.now(datetime.timezone.utc)).astimezone(datetime.timezone.utc)
+    try:
+        observed = _utc(att.get("observed_at"))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise AuthorizationError(
+            f"approval.{field}.observed_at 非合法时间（R4-D2 fail-closed）：{att.get('observed_at')!r}（{exc}）")
+    if observed > inst + datetime.timedelta(minutes=5):
+        raise AuthorizationError(
+            f"approval.{field}.observed_at 在未来（R4-D2）：{att.get('observed_at')!r} > now")
+    return {"provider": rule.get("provider"), "required": True, "cap_usd": cap,
+            "max_allowed_cap_usd": max_allowed, "scope": att.get("scope"),
+            "attested_by": att.get("attested_by"), "observed_at": att.get("observed_at"),
+            "evidence_ref": att.get("evidence_ref")}
 
 
 def validate_execution_authorization(request_path, approval_path, expected_runtime, now=None,
@@ -351,6 +577,8 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
         raise AuthorizationError("adversarial_review 必须是 none、ai_agent 或 peer")
     if approval.get("adversarial_review") != "none" and not approval.get("adversarial_review_ref"):
         raise AuthorizationError("发生对抗性复核时必须记录 adversarial_review_ref")
+    # R3-D2 + R4-D2：外部 provider budget cap 契约（request 定规则 → validator fail-closed 强制）。
+    provider_cap = _enforce_provider_budget_cap(request, approval, now=now)
     if expected_runtime["phase"] == "pilot" \
             and expected_runtime["analysis_eligibility"] != "excluded":
         raise AuthorizationError("pilot 必须 analysis_eligibility=excluded")
@@ -387,6 +615,7 @@ def validate_execution_authorization(request_path, approval_path, expected_runti
         "approval_artifact": rel_apr,
         "approved_budget_cap_usd": expected_runtime["budget_cap_usd"],
         "budget_enforcement": "hash-bound preflight plus max_trials; no live USD metering",
+        "provider_budget_cap": provider_cap,   # R3-D2：receipt 回显跑前 attest 的外部 provider cap
         "phase": expected_runtime["phase"],
         "analysis_eligibility": expected_runtime["analysis_eligibility"],
     }

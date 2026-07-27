@@ -1,0 +1,23 @@
+{
+ "approval": {
+  "approved_by": "l9g",
+  "approval_role": "execution_authorizer",
+  "decision": "approve",
+  "authorization_mode": "self_authorized_solo",
+  "role_separation": "procedural",
+  "person_independence": "none",
+  "independence_verification": "not_applicable",
+  "conflict_of_interest": "self_review",
+  "approval_scope": "internal_t0_t2_development",
+  "execution_request_hash": "0f67f794981765bce258dc09e0129a9b8f6c3787fe1e993eddf85af3bd954e92",
+  "supersedes_approval_for_request": "exfil-email-pilot-001",
+  "approved_target": "agentdojo-workspace-mock",
+  "approved_provider": "openrouter",
+  "budget_cap_usd": 2.0,
+  "adversarial_review": "ai_agent",
+  "adversarial_review_ref": "reports/partner-review-2026-07-24.md —— codex no-go 复核，8 阻塞/发现逐条修（B2-B4/F1/F2/§6/§7）；AI-agent 复核不构成人员独立性",
+  "valid_from": "2026-07-23T23:32:42Z",
+  "valid_until": "2026-07-24T02:32:42Z",
+  "notes": "exfil_via_email pilot 002（gpt-4o-mini@OpenAI，三臂各 5，excluded）；候选修订 free-busy-proxy-v1。只验接线/正臂点火迹象，不下 C2、不与 additive/aug 池化。supersede 被拒 001。"
+ }
+}

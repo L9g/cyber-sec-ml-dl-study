@@ -1,7 +1,12 @@
 # List-Titles 下一步开发计划备忘录
 
 日期：2026-07-26  
-状态：讨论稿，供下一次会话继续决策；不构成预注册、Hat A/Hat B 授权或计费运行许可。
+状态：**已执行完毕（追记 2026-07-27）**——本文档「建议结论」提出的闭环（list-titles 代码收口 → 治理冻结 →
+新三臂实验 → 保证结论派生）与「本轮之后的路线选择」第 1 条（对可用的 list-titles instrument 做跨运行稳定性
+资格验证）均已走完：list-titles C2 判别 pass，instrument qualification 预注册 FROZEN、派生器与授权扩展
+落码、对抗性复核完成，campaign 窗口 1/3 已跑完（详见 `docs/trial/prereg-instrument-qualification-list-titles.md`
+与 auto-memory `project-ithuriel-instrument-qualification-prereg`）。本文档保留作历史决策记录，不再是待办；
+以下内容按写作时刻的讨论稿原样留存，不回填改写。
 
 ## 建议结论
 

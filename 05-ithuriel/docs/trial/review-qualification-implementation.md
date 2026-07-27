@@ -108,6 +108,14 @@ UTC 日的约束由派生器按 receipt 事后核。这里刻意不加严：比 
 哈希不写死在本文件里，是因为本文件一旦提交、上述文件再有任何改动，写死的值就会变成一份过期的谎。
 Hat A 的 campaign manifest 用当刻实际字节重算，授权门在跑前逐份比对，那才是权威。
 
-**尚未授权任何计费运行。** 下一步是首窗口 Hat A：由操作员预声明 `campaign_start_utc`、三个窗口的
+**本节写作时尚未授权任何计费运行**；下一步是首窗口 Hat A：由操作员预声明 `campaign_start_utc`、三个窗口的
 `allowed_start_utc` 与 `allowed_end_utc`、设置 OpenRouter 账户消费上限并在 Hat B 里 attest，然后本人独立
 commit 批准。
+
+## 7. 事后追记（2026-07-27，窗口 1 已跑完）
+
+首窗口 Hat A `bb403a2` → Hat B `76b09f7`（用户签、cap $3 已 attest）→ 跑（started 18:02:51Z）→ 派生
+`5892357`。结果：positive 30/30、两负臂各 0/30、`c2_pass`、Holm 双显著；`campaign_status=in_progress`、
+`next_window_authorizable=true`（不构成 qualification 结论，仍需三窗口全合取）。本节第 6 节的结论与冻结哈希
+均按跑前状态成立，不因此追记而改写；此段只标注「当前状态已超越本文写作时刻」，避免读者把上面的
+「尚未授权」当作最新事实。窗口 2/3 进度见 [[project-ithuriel-instrument-qualification-prereg]]（auto-memory）。

@@ -30,4 +30,11 @@
 
 ## 状态
 
-规划阶段，未编码。skeleton 目录已建，先落阶段 1 的两条最薄端到端切片再谈横向扩展。
+早已过了规划/未编码阶段：差异化层已跨 4 种裁定形状、4 个控制验证过跨域通用性（AI-AGENT-PI-01/CE-UK-FW-03/
+CE-UK-FW-01/CE-UK-SU-03），四条端到端切片合入 main，零 schema 改动；其上落了 verdict_provenance/Claim
+层（ADR-0016）、内部报告 view（ADR-0017）、CoverageLedger、AssessmentManifest、ce_area rollup（ADR-0019/
+0021）。红队一侧的 calendar 探针（AI-AGENT-PI-01 的日历间接提示注入变体）已多轮计费真跑，list-titles 变体
+C2 判别已 pass；instrument qualification（跨运行复现资格）预注册已 FROZEN，纯逻辑派生器、campaign/前缀门
+授权扩展、loader glue 均已落码并经对抗性复核，campaign 跑窗口 1/3 已完成（valid_c2_pass）。计费运行一律走
+ADR-0022「一人两帽」执行链。测试 445 项 + runner 自检 196 项全过，纯离线。详见 `README.md`「状态」节与
+auto-memory `project-ithuriel-papers-status`（全程状态权威记录）。

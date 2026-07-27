@@ -1,13 +1,152 @@
 # Partner review — exfil_via_email main C2 + §6.2 曝光遥测
 
-**当前 verdict（Round 4）：NO-GO。** 暂不签 Hat B 005。R3-D3 已通过；R3-D1 的 `sys.prefix` 断言确实
-挡住了“直接用另一 venv 跑 runner”，但 uv 的目标仍可被继承的 `UV_PROJECT_ENVIRONMENT`/`UV_PROJECT`
-改写，因而两层仍可能核不同环境。provider-cap 的 request/approval/validator 三层方向正确，且用户定义的
-`account` scope / `$10` blast-radius ceiling 可接受；但 validator 仍接受 `NaN` cap 与非时间字符串，receipt
-也没有实际回显 `provider_budget_cap`。须修后重做 Hat A 006。
+**当前 verdict（停止线 spot-check / Hat A 007）：GO。** 007 的 request hash、runtime、9 项 materials 与
+`UV_ONLY_INSTALL_LOCAL` 绕过回归均通过；可以在设置 OpenRouter account cap、填写合规
+`provider_cap_attestation` 后，由用户本人签 Hat B 并运行本轮 main C2。
 
-G4 架构结论不变：$3 是计划额度，135 次 attempt cap + OpenRouter account cap 是可接受的硬边界组合，
-**不要求**代码级实时 USD meter。
+G4 架构结论不变：$3 是计划额度，135 个 trial-attempt cap + OpenRouter account cap（≤$10）是可接受的
+blast-radius 组合；不把前者称 API-call/cost cap，**不要求**代码级实时 USD meter。停止线生效：不再要求包
+字节哈希、可信时间戳、实时 meter、强制 evidence hash 或 Python `-I`。
+
+## 停止线 spot-check（Hat A 007 / `088d9311…`）
+
+### 最终结论
+
+- **GO，无新增阻塞项。** R5-D1 的真实门漏洞已闭合；R4 provider-cap 四层、环境同一性、C1/C2 测量修复和
+  既有 claim 边界继续成立。
+- 006/007 历史叙述中残留的 `005(this)`，以及 prereg 所称“007 与 prereg 同 commit”并不准确（prereg
+  实际在直接父 commit `5745d24`，Hat A request 在 `27fadfe`）。机器字段 `request_id`/supersedes/hash 与祖先
+  关系无误；按停止线将其保留为非阻塞审计注记，不再为纯历史文案生成 Hat A 008。
+
+### 指定三项 spot-check
+
+1. **R5-D1 / UV 反例：通过。** 我在父进程同时设置
+   `UV_ONLY_INSTALL_LOCAL=1`、`UV_ONLY_INSTALL_PROJECT=1` 和恶意 `UV_INDEX_URL` 后调用真实
+   `verify_env_matches_lock()`：传给 uv 子进程的 `UV_*` 只有
+   `UV_PROJECT_ENVIRONMENT=<repo>/.venv`；uv 实际输出 `Checked 71 packages`、`Would make no changes`，rc=0。
+   不再出现修复前的空选择集 `Checked in 0.03ms`。按前缀移除全部继承 `UV_*`、再只回填一个受控键的实现，
+   也不会因 uv 后续增加选择变量而回到逐项 blocklist 漏洞。
+2. **007 hash/runtime：通过。** `execution_request_hash` 独立复算为
+   `088d9311ed2ac2121650a650a791fae342a99f6a736fb1040975e5382e4524aa`；按 confirm 路径重建 runtime
+   `runtime_exact_match=True`，包括 Python/AgentDojo/OpenAI、read_only、三臂、30 可解释/臂、45 attempt/臂、
+   135 trial attempts、90min、$3 计划额度与 stage1 不池化。
+3. **9 项 materials：通过。** 顶层/runtime materials 相同，9 个当前 SHA-256 全部等于 007 声明值；
+   governance=`8ac4b277…`、prereg=`2034879f…`、uv.lock=`3ae4523b…` 等均 exact。
+
+### 离线验证
+
+- `.venv/bin/python -m pytest src/tests -q`：**300 passed**。
+- `.venv/bin/python scripts/run_calendar_probe.py --self-test`：**196** 项全部通过。
+- 正常环境 preflight 与恶意 inherited-UV 环境 preflight 均核 repo `.venv` 的 71-package closure。
+
+### Hat B / 开跑前条件
+
+1. 用户先在 OpenRouter 设置 account cap `<= $10`，approval 填有限正数 `cap_usd`、`scope=account`、
+   `cap_configured=true`、操作员与合法 `observed_at`。
+2. Hat B approval 必须引用 007 hash，由用户本人在 Hat A `27fadfe` 之后的独立 commit 提交，并留足
+   `now + 90min <= valid_until` 的批准窗口。
+3. 使用冻结的 `.venv/bin/python` 跑法，保持 `PYTHONPATH`/`PYTHONHOME` 为空。authorization、preflight 或
+   reachability 任一 RED 都停止，不绕门重跑。
+
+## Round 5 复核（Hat A 006 / `a5ab0b3…`）
+
+### Round-5 汇总表
+
+| ID | 层 | 严重度 | 位置 | 一句话 |
+|----|----|--------|------|--------|
+| R5-D1 | design | high | `execution_authorization.py:119-146` | uv 子进程采用三项黑名单而非 `UV_*` allowlist；`UV_ONLY_INSTALL_LOCAL=1` 令 closure 检查选择 0 个远端包并成功返回 |
+| R5-D2 | design | low | request 006 `supersession_reason[0]`；prereg §11 | 006 的历史文字仍称 `005(this)`，prereg 又称 006 与 prereg “同 commit”，实际 prereg 是 006 Hat A 的直接父 commit |
+
+纪律层 0 条。R5-D2 不独立阻塞；R5-D1 会让治理门错误放行，必须先修。
+
+### R4 三修逐条结论
+
+| Round-4 项 | Round-5 状态 | 结论 |
+|-------------|--------------|------|
+| R4-D1 uv target + import path | **部分通过** | project/target override 已闭合，`PYTHONPATH`/`PYTHONHOME` 拒绝合理；仍漏能改变 sync 选择集的其它 `UV_*`，转 R5-D1 |
+| R4-D2 provider-cap validator | **通过** | cap/ceiling 有限正数、时间解析、未来时间与 provider 一致性均已 fail-closed |
+| R4-C1 receipt 回显 | **通过** | receipt 已写 `provider_budget_cap`、计划额度和 enforcement，shape 回归成立 |
+
+### R5-D1 — 受控 uv env 仍是易漏的黑名单
+
+- 层 / 严重度：design / high
+- 位置：`src/ithuriel/governance/execution_authorization.py:119-146`
+- 已通过部分：子进程强制绝对 `UV_PROJECT_ENVIRONMENT=repo/.venv`，CLI 使用绝对 `--project`，并清
+  `UV_PROJECT`/`UV_WORKING_DIR`/`UV_PYTHON`、加 `--no-config`。这确实闭合了上一轮“查另一个 project/env”
+  的反例；当前真实 target 与 runner `sys.prefix` 相同。
+- **具体错误通过**：在正常 `.venv/bin/python` 启动前设置 `UV_ONLY_INSTALL_LOCAL=1`。现代码构造
+  `env={...os.environ...}` 时不会清它。当前 uv 0.11.23 将 sync 选择集收窄为 only local；因项目
+  `package=false` 且使用 `--inexact`，实测输出仅 `Checked in 0.03ms / Would make no changes`、rc=0，而正常
+  命令是 `Checked 71 packages`。我进一步在该变量存在时直接调用 `verify_env_matches_lock()`，三层整体仍返回
+  success。此时 agentdojo/openai 的 direct-pin 层还在，但 pydantic/httpx/jiter 等 transitive drift 又不受检。
+- 这不是未来猜测：当前 uv binary 已识别 `UV_ONLY_INSTALL_LOCAL`；同族的 `UV_ONLY_INSTALL_PROJECT`、
+  `UV_ONLY_INSTALL_WORKSPACE`、`UV_NO_INSTALL_*`、group selection 等也说明逐项黑名单会持续漏。
+  [uv 官方环境变量目录](https://docs.astral.sh/uv/configuration/environment/)和
+  [当前 sync CLI 参考](https://docs.astral.sh/uv/reference/cli/#uv-sync)也表明 uv 大量行为可由环境变量配置。
+- 其它专项判断：
+  - `UV_CACHE_DIR` 只改变 cache，且已有 `--no-cache`，不是 target/closure 绕过；不必特准保留。
+  - legacy `UV_WORKING_DIRECTORY` 没被清，但在当前绝对 `--project` + 绝对 target 下实测仍核 repo 环境；
+    `UV_NO_PROJECT=1` 也被显式 `--project` 压过。它们当前不是独立 bypass，不过 allowlist 会自然消除。
+  - `VIRTUAL_ENV`/`CONDA_PREFIX` 在未用 `--active` 且显式 project environment 时不接管 project sync；可为
+    审计整洁一并清除，但不是本轮 blocker。
+  - `UV_NO_SYNC=1` 在 `--check` 下对一个不存在/不同步 target 仍返回失败，未复现静默通过；真正反例是
+    `UV_ONLY_INSTALL_LOCAL`。
+- 最小且耐版本变化的修复：不要继续扩展黑名单。给子进程保留普通 OS 必需变量，但删除**全部**继承的
+  `UV_*`，随后只回填 `UV_PROJECT_ENVIRONMENT=<realpath repo/.venv>`；命令行继续显式
+  `--no-cache --no-config --project <abs> --check --frozen --offline --inexact`。测试除 target override 外，再设
+  `UV_ONLY_INSTALL_LOCAL=1`，并断言传给 subprocess 的 env 除强制项外无任何继承 `UV_*`；可同时记录/断言正常
+  检查不是空选择集。
+- 挑战纪律？：否。
+
+### PYTHONPATH / PYTHONHOME 取向：通过
+
+- 对本轮固定 runner，选择**拒绝而不是只披露**是正确的：计费命令直接使用 `.venv/bin/python`，runner 自己
+  把 governed `../src` 放在 `sys.path[0]`，不需要 `PYTHONPATH`；因此拒绝不会牺牲合法运行形状。
+- 时点也可接受：模块加载时 runner 先显式插入 repo/src；AgentDojo/OpenAI 的 imports 位于函数体内，confirm
+  路径在 authorization + `verify_env_matches_lock()` 之后才走 reachability/build pipeline。因此普通
+  `PYTHONPATH` shadow 会在外部依赖导入前被拒。
+- “拒绝 + 边界声明并存”优于二选一：拒绝覆盖普通 import-path 注入；版本级边界仍诚实保留对同版本包字节、
+  `.pth`/`sitecustomize` 等更强对抗性 provenance 的不保证。在 self-authorized T0–T2 下不要求升级到 Python
+  `-I` 或全模块内容哈希。
+
+### R4-D2 — 通过
+
+- `_finite_positive` 同时覆盖 request ceiling 与 approval cap，拒 bool/NaN/inf/非数/非正数；原 NaN 反例
+  已失败。
+- `observed_at` 经 `_utc()` 严格解析并拒绝超过 now+5min 的未来值；5 分钟是显式时钟偏差容忍，Hat B 仍应填
+  实际已观察的当前/过去时间。rule provider 与已被 runtime 门绑定的 approval provider 规范化比较正确。
+- request 的 `account` / `$10` 语义与前轮结论不变，approval 仍须提供实际有限 cap≤10。
+
+### R4-C1 — 通过
+
+- `write_run_receipt()` 已从 auth meta 回显 `provider_budget_cap`、`approved_budget_cap_usd`、
+  `budget_enforcement`；测试实际生成 receipt 并核 shape/value。四层字段归属现已兑现。
+
+### R5-D2 — 两处历史标签陈旧（非阻塞）
+
+- 006 request 的第一条 chain 字符串仍写 `005(this,round-3 3 fixes)`；`this` 应为 006，或直接删掉该代词。
+- prereg §11 写“006 与本 prereg 同 commit”，但 git 显示 prereg 修订为 `7477910`，request Hat A 为下一 commit
+  `4f186a5`。这不破坏冻结：006 的材料 hash 精确引用父 commit 中的 prereg 字节，Hat A 后三方 hash 门仍成立；
+  只是人读顺序标签不准。既然 R5-D1 必须产生 007，应同步改正。
+
+### Request 006 与离线验证
+
+- `execution_request_hash` 独立复算为
+  `a5ab0b395bc264e988a6013e09d932c97a0570dbc8e1c069ca4aaf0508aa4da7`，与 006 一致。
+- 9 项 materials SHA-256 全部匹配；顶层/runtime materials 相同；按 confirm 路径重建 runtime
+  `runtime_exact_match=True`。
+- 无额外 uv 选择变量时，真实 preflight 返回 repo `.venv`、agentdojo 0.1.35/openai 2.45.0、正常 uv rc=0。
+  `UV_ONLY_INSTALL_LOCAL=1` 时同一 preflight 也返回 rc=0，构成 R5-D1 反例。
+- 请求链的机器字段 001→…→006 与 commit 祖先关系完整；低严重度文字差异见 R5-D2。
+- `.venv/bin/python -m pytest src/tests -q`：**299 passed**。
+- `.venv/bin/python scripts/run_calendar_probe.py --self-test`：**196** 项全部通过。
+
+### Round-5 Go 条件
+
+1. 闭合 R5-D1：uv subprocess 对所有继承 `UV_*` 使用 deny-by-prefix/allowlist 策略，只回填明确的 project
+   environment；加入 `UV_ONLY_INSTALL_LOCAL` 真实反例或受控-env shape 回归。
+2. 顺手修 R5-D2 的 `005(this)` 与“同 commit”标签。
+3. governance/prereg 字节会变化，故 supersede 006、重做 Hat A 007；新 hash 复核后再签 Hat B。
 
 ## Round 4 复核（Hat A 005 / `008e09c…`）
 
